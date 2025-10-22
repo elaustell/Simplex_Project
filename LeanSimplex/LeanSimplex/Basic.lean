@@ -176,9 +176,9 @@ by
 
 
 lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
-                      (x : Fin n) (k : Fin n) (x_in_N : t.N k = x) :
-  ∀ (y : Fin m), t.B y ≠ x := by
-  intros y
+                      (x : Fin n) (k : Fin n) :
+  (t.N k = x) → (∀ (y : Fin m), t.B y ≠ x) := by
+  intros x_in_N y
   unfold WellFormed at h_wf
   obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
   by_contra h_cont
@@ -196,6 +196,21 @@ lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   have h_dis := Set.disjoint_left.mp B_N_disjoint2
   apply h_dis at h1
   simp_all
+
+lemma x_not_in_B_implies_x_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) (x : Fin n) :
+  (¬∃ (y : Fin m), t.B y = x) → (∃p, t.N p = x) := by
+  intro h
+  unfold WellFormed at h_wf
+  obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+  -- B_N_universe will be the key here
+  by_contra h_cont
+  rewrite [Set.union_def] at B_N_universe
+  simp at B_N_universe
+  apply Set.eq_univ_iff_forall.mp at B_N_universe
+  have contra := B_N_universe x
+  simp [h_cont] at contra
+  simp_all
+
 
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
@@ -280,6 +295,52 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
           obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
           apply N_inj at h5
           exact h5
+    · constructor
+      · -- WTS N ∪ B = universe
+        unfold pivot
+        simp_all
+        apply Set.eq_univ_iff_forall.mpr
+        intro x
+        rewrite [Set.union_def]
+        simp_all
+        unfold Function.update
+        simp_all
+        -- Here we need to consider 4 cases
+          -- 1. x == enter
+          -- 2. x == t.B r
+          -- 3. x ∈ t.B, x ≠ t.b r
+          -- 4. x ∈ t.N, x ≠ enter
+        by_cases x_in_B : ∃p, t.B p = x
+        · -- case x ∈ B
+          obtain ⟨p,x_in_B⟩ := x_in_B
+          by_cases p_is_r : p = r
+          · -- case x == t.B r, need y = k
+            right
+            apply Exists.intro k
+            simp_all
+          ·
+            left
+            apply Exists.intro p
+            simp_all
+        · -- case x ∈ N
+          have x_in_N := x_not_in_B_implies_x_in_N t h_wf x x_in_B
+          obtain ⟨p,x_in_N⟩ := x_in_N
+          by_cases x_is_enter : x = enter
+          · -- case x == enter
+            left
+            apply Exists.intro r
+            simp_all
+          ·
+            right
+            -- need to find a y ≠ k
+            apply Exists.intro
+
+
+
+
+
+
+
 
 
 -- TODO
