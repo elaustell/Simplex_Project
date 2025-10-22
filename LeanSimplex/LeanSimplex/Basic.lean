@@ -12,6 +12,46 @@ structure LP (m n : ℕ) where
   (b : Fin m → ℝ)
   (c : Fin n → ℝ)
 
+--  Tableau representation (standard form)
+    /- LP in standard form: maximize c^T subject to Ax = b, x >= 0
+
+        A: The constraint matrix
+            - len(A) = number of constraints m
+            - len(A[0]) = number of variables n
+            - each row A[r] corresponds to one linear constraint (coefficients of the variables)
+
+        b: RHS of the constraints
+            - Each b[r] is the value that the corresponding row of A should sum to
+            - len(b) = # constraints = len(A)
+
+        v: Current value of objective function
+
+        B: Indices of basic variables
+            - a basic feasible solution (BFS) is defined by selecting a set of variables
+              that correspond to the columns of A forming a non-singular square matrix.
+            - B[i] is the column index in A of the i-th basic variable.
+            - len(B) = number of constraints = m
+              (since the basis must have exactly one variable per constraint).
+
+        N: indices of non-basic variables
+            - All variables not in the basis are in N.
+            - partition the set {0, 1, …, n-1} together with B.
+            - candidates for entering the basis during pivoting.
+
+
+            Simplex Tableau
+
+                        x0      x1      x2   ...    xn-1   |  RHS b
+                B0   A[0][0] A[0][1] A[0][2] ... A[0][n-1] |   b[0]
+                B1   A[1][0] A[1][1] A[1][2] ... A[1][n-1] |   b[1]
+                B2   A[2][0] A[2][1] A[2][2] ... A[2][n-1] |   b[2]
+                ...
+                Bm-1 A[m-1][0]  ...               ...      | b[m-1]
+                -------------------------------------------
+                        c[0]   c[1]    c[2]  ...   c[n-1]  |  v
+
+    -/
+
 structure Tableau (m n : ℕ) where
   (A : Matrix (Fin m) (Fin n) ℝ)
   (b : Fin m → ℝ)
@@ -132,18 +172,90 @@ by
           exact h1
 
         exact mul_nonneg this (h_feasible r)
-      -- now sum of nonnegatives is nonneg
-
       simp_all
-      have h3 : A_i_enter ≤ 0 → A_i_enter / piv ≤ 0 / piv
-        := (div_le_div_iff_of_pos_right h_pivot_pos).mpr
-      -- have h4 := le_of_not_gt hA_pos
-      apply h3 at hA_pos
-      simp_all
-      have zero_leq_piv : 0 = piv ∨ 0 < piv := by
-        right
-        exact h_pivot_pos
-
-      -- exact le_trans term_nonneg (le_of_eq_or_lt zero_leq_piv)
-      -- exact add_nonneg (h_feasible i) term_nonneg
       exact le_trans term_nonneg (h_feasible i)
+
+
+lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
+                      (x : Fin n) (x_in_N : ∃ k, t.N k = x) :
+  ∀ (y : Fin m), t.B y ≠ x := by
+  intros y
+  unfold WellFormed at h_wf
+  obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+  by_contra h_cont
+  have h1 : x ∈ (Set.range t.B) := by
+    simp
+    apply Exists.intro y
+    exact h_cont
+  have h2 : x ∈ (Set.range t.N) := by
+    simp
+    obtain ⟨k,x_in_N⟩ := x_in_N
+    apply Exists.intro k
+    exact x_in_N
+  have B_N_subeq_empty : Set.range t.B ∩ Set.range t.N ⊆ ∅ := Set.subset_empty_iff.mpr B_N_disjoint
+  have B_N_disjoint2 : Disjoint (Set.range t.B) (Set.range t.N)
+      := Set.disjoint_iff.mpr B_N_subeq_empty
+  have h_dis := Set.disjoint_left.mp B_N_disjoint2
+  apply h_dis at h1
+  simp_all
+
+theorem pivot_preserves_well_formedness {m n : ℕ}
+  (t : Tableau m n) (enter : Fin n) (r : Fin m)
+  (h_enter_in_N : ∃ k, t.N k = enter)
+  (h_wf : WellFormed t)
+  : WellFormed (pivot t enter r h_enter_in_N) := by
+  unfold WellFormed at *
+  -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
+  let t' := (pivot t enter r h_enter_in_N)
+  constructor
+  · -- WTS B' is Injective
+    unfold pivot
+    simp_all
+    unfold Function.Injective at *
+    intros a1 a2 h5
+    by_cases a1_r_eq : a1 = r
+    · -- case a1 == r
+      simp_all
+      by_cases a2_r_eq : a2 = r
+      · symm
+        exact a2_r_eq
+      ·
+        unfold Function.update at h5
+        simp_all
+        -- SO we have a hypothesis that says enter = t.B a2
+        -- In other words, that enter was in B
+        -- However, enter was actually in N
+        -- and B and N are disjoint
+        -- hence contradiction
+        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter h_enter_in_N a2
+        simp_all
+    · -- case a1 ≠ r
+      by_cases a2_r_eq : a2 = r
+      ·
+        simp_all
+        unfold Function.update at h5
+        simp_all
+        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter h_enter_in_N a1
+        simp_all
+      ·
+        unfold Function.update at h5
+        simp_all
+        obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+        apply B_inj at h5
+        exact h5
+
+  · constructor
+    · -- WTS N' is injective
+
+
+
+-- TODO
+lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
+  (enter : Fin n) (r : Fin m)
+  (h_enter_in_N : ∃ k, t.N k = enter)
+  (h_pivot_pos : 0 < t.A r enter)
+  (h_feasible : feasible t)
+  (h_ratio : ∀ i, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
+  (h_c_pos : 0 < t.c enter)
+  : (pivot t enter r h_enter_in_N).v > t.v :=
+  sorry
