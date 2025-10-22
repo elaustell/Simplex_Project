@@ -76,14 +76,13 @@ def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
   ∀ i, t.b i ≥ 0
 
 noncomputable def pivot {m n : ℕ}
-  (t : Tableau m n) (enter : Fin n) (r : Fin m)
-  (h_enter_in_N : ∃ k : Fin n, t.N k = enter)
+  (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin n)
+  (h_enter_in_N : t.N k = enter)
   : Tableau m n :=
 
   let piv := t.A r enter
   let oldB := t.B r
-  -- find the index k in N such that N[k] = enter
-  let k := Classical.choose h_enter_in_N
+
   -- updated A, b, c, v
   let A' := fun i j => if i = r then t.A r j / piv else t.A i j - (t.A i enter / piv) * t.A r j
   let b' := fun i => if i = r then t.b i / piv else t.b i - (t.A i enter / piv) * t.b r
@@ -116,14 +115,14 @@ lemma some_linear_arith : ∀ (a b c d : ℝ),
 
 lemma pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
   (enter : Fin n) (r : Fin m)
-  (h_enter_in_N : ∃ k : Fin n, t.N k = enter)
+  (k : Fin n) (h_enter_in_N : t.N k = enter)
   (h_pivot_pos : 0 < t.A r enter)
   (h_feasible : feasible t)
   (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
-  : feasible (pivot t enter r h_enter_in_N) :=
+  : feasible (pivot t enter r k h_enter_in_N) :=
 by
   intro i
-  let t' := pivot t enter r h_enter_in_N
+  let t' := pivot t enter r k h_enter_in_N
   by_cases h : i = r
   · -- leaving row
     rw [h]
@@ -177,7 +176,7 @@ by
 
 
 lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
-                      (x : Fin n) (x_in_N : ∃ k, t.N k = x) :
+                      (x : Fin n) (k : Fin n) (x_in_N : t.N k = x) :
   ∀ (y : Fin m), t.B y ≠ x := by
   intros y
   unfold WellFormed at h_wf
@@ -189,7 +188,6 @@ lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
     exact h_cont
   have h2 : x ∈ (Set.range t.N) := by
     simp
-    obtain ⟨k,x_in_N⟩ := x_in_N
     apply Exists.intro k
     exact x_in_N
   have B_N_subeq_empty : Set.range t.B ∩ Set.range t.N ⊆ ∅ := Set.subset_empty_iff.mpr B_N_disjoint
@@ -201,12 +199,12 @@ lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
 
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
-  (h_enter_in_N : ∃ k, t.N k = enter)
+  (k : Fin n) (h_enter_in_N : t.N k = enter)
   (h_wf : WellFormed t)
-  : WellFormed (pivot t enter r h_enter_in_N) := by
+  : WellFormed (pivot t enter r k h_enter_in_N) := by
   unfold WellFormed at *
   -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
-  let t' := (pivot t enter r h_enter_in_N)
+  let t' := (pivot t enter r k h_enter_in_N)
   constructor
   · -- WTS B' is Injective
     unfold pivot
@@ -227,7 +225,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         -- However, enter was actually in N
         -- and B and N are disjoint
         -- hence contradiction
-        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter h_enter_in_N a2
+        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter k h_enter_in_N a2
         simp_all
     · -- case a1 ≠ r
       by_cases a2_r_eq : a2 = r
@@ -235,7 +233,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         simp_all
         unfold Function.update at h5
         simp_all
-        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter h_enter_in_N a1
+        have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter k h_enter_in_N a1
         simp_all
       ·
         unfold Function.update at h5
@@ -246,7 +244,42 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
 
   · constructor
     · -- WTS N' is injective
-
+      unfold pivot
+      simp_all
+      unfold Function.Injective at *
+      intros a1 a2 h5
+      by_cases a1_r_eq : a1 = k
+      · -- case a1 == k
+        simp_all
+        by_cases a2_r_eq : a2 = k
+        · symm
+          exact a2_r_eq
+        ·
+          unfold Function.update at h5
+          simp_all
+          -- SO we have a hypothesis that says enter = t.B a2
+          -- In other words, that enter was in B
+          -- However, enter was actually in N
+          -- and B and N are disjoint
+          -- hence contradiction
+          have lem : t.N a2 = t.N a2 := by rfl
+          have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf (t.N a2) a2 lem r
+          simp_all
+      · -- case a1 ≠ k
+        by_cases a2_r_eq : a2 = k
+        ·
+          simp_all
+          unfold Function.update at h5
+          simp_all
+          have lem : t.N a1 = t.N a1 := by rfl
+          have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf (t.N a1) a1 lem r
+          simp_all
+        ·
+          unfold Function.update at h5
+          simp_all
+          obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+          apply N_inj at h5
+          exact h5
 
 
 -- TODO
