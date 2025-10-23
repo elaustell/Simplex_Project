@@ -211,13 +211,22 @@ lemma x_not_in_B_implies_x_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   simp [h_cont] at contra
   simp_all
 
+lemma contrapose_injectivity {α β : Type} (f : α → β) :
+  Function.Injective f → (∀ (a1 a2 : α), a1 ≠ a2 → f a1 ≠ f a2) := by
+  intro h
+  intros a1 a2
+  contrapose
+  unfold Function.Injective at h
+  simp_all
+  apply h
+
 
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
   (k : Fin n) (h_enter_in_N : t.N k = enter)
   (h_wf : WellFormed t)
   : WellFormed (pivot t enter r k h_enter_in_N) := by
-  unfold WellFormed at *
+  -- unfold WellFormed at *
   -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
   let t' := (pivot t enter r k h_enter_in_N)
   constructor
@@ -296,7 +305,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
           apply N_inj at h5
           exact h5
     · constructor
-      · -- WTS N ∪ B = universe
+      · -- WTS N' ∪ B' = universe
         unfold pivot
         simp_all
         apply Set.eq_univ_iff_forall.mpr
@@ -333,7 +342,76 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
           ·
             right
             -- need to find a y ≠ k
-            apply Exists.intro
+            apply Exists.intro p
+            by_cases p_is_k : p = k
+            · simp_all
+            · simp_all
+      · -- WTS N' ∩ B' = ∅
+        unfold pivot
+        simp_all
+        apply Set.eq_empty_iff_forall_notMem.mpr
+        intro x1
+        simp_all
+        intro x2
+        intro h1
+        intro x3
+        unfold Function.update
+        by_cases x3_is_k : x3 = k
+        ·
+          simp_all
+          unfold Function.update at h1
+          by_cases x2_is_r : x2 = r
+          ·
+            simp_all
+            rewrite [← h1]
+            have h4 := x_in_N_implies_x_not_in_B t h_wf enter k
+            apply h4 at h_enter_in_N
+            exact h_enter_in_N r
+          ·
+            simp_all
+            rewrite [← h1]
+            unfold WellFormed at h_wf
+            obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+            unfold Function.Injective at B_inj
+            contrapose B_inj
+            simp_all
+            apply Exists.intro x2
+            simp_all
+            apply Exists.intro r
+            simp_all
+        ·
+          simp_all
+          unfold Function.update at h1
+          by_cases x2_is_r : x2 = r
+          ·
+            simp_all
+            rewrite [← h1]
+            rewrite [← h_enter_in_N]
+            obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+            have h_N_inj := contrapose_injectivity t.N N_inj x3 k
+            simp_all
+          ·
+            simp_all
+            rewrite [← h1]
+            have h3 := x_in_N_implies_x_not_in_B t h_wf (t.N x3) x3
+            simp at h3
+            have h4 := h3 x2
+            rewrite [← ne_eq] at *
+            symm
+            exact h4 
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
