@@ -72,12 +72,15 @@ def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
     | some i => t.b i
     | none   => 0
 
+-- The values in b correspond to the basic feasible solution.
+-- because every constraint has one basic variable and all others
+-- are nonbasic variables set to 0.
 def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
   ∀ i, t.b i ≥ 0
 
 noncomputable def pivot {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin n)
-  (h_enter_in_N : t.N k = enter)
+  (_ : t.N k = enter)
   : Tableau m n :=
 
   let piv := t.A r enter
@@ -241,8 +244,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
       by_cases a2_r_eq : a2 = r
       · symm
         exact a2_r_eq
-      ·
-        unfold Function.update at h5
+      · unfold Function.update at h5
         simp_all
         -- SO we have a hypothesis that says enter = t.B a2
         -- In other words, that enter was in B
@@ -253,14 +255,12 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         simp_all
     · -- case a1 ≠ r
       by_cases a2_r_eq : a2 = r
-      ·
-        simp_all
+      · simp_all
         unfold Function.update at h5
         simp_all
         have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter k h_enter_in_N a1
         simp_all
-      ·
-        unfold Function.update at h5
+      · unfold Function.update at h5
         simp_all
         obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
         apply B_inj at h5
@@ -278,8 +278,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         by_cases a2_r_eq : a2 = k
         · symm
           exact a2_r_eq
-        ·
-          unfold Function.update at h5
+        · unfold Function.update at h5
           simp_all
           -- SO we have a hypothesis that says enter = t.B a2
           -- In other words, that enter was in B
@@ -291,15 +290,13 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
           simp_all
       · -- case a1 ≠ k
         by_cases a2_r_eq : a2 = k
-        ·
-          simp_all
+        · simp_all
           unfold Function.update at h5
           simp_all
           have lem : t.N a1 = t.N a1 := by rfl
           have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf (t.N a1) a1 lem r
           simp_all
-        ·
-          unfold Function.update at h5
+        · unfold Function.update at h5
           simp_all
           obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
           apply N_inj at h5
@@ -327,8 +324,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             right
             apply Exists.intro k
             simp_all
-          ·
-            left
+          · left
             apply Exists.intro p
             simp_all
         · -- case x ∈ N
@@ -339,8 +335,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             left
             apply Exists.intro r
             simp_all
-          ·
-            right
+          · right
             -- need to find a y ≠ k
             apply Exists.intro p
             by_cases p_is_k : p = k
@@ -352,23 +347,18 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         apply Set.eq_empty_iff_forall_notMem.mpr
         intro x1
         simp_all
-        intro x2
-        intro h1
-        intro x3
+        intros x2 h1 x3
         unfold Function.update
         by_cases x3_is_k : x3 = k
-        ·
-          simp_all
+        · simp_all
           unfold Function.update at h1
           by_cases x2_is_r : x2 = r
-          ·
-            simp_all
+          · simp_all
             rewrite [← h1]
             have h4 := x_in_N_implies_x_not_in_B t h_wf enter k
             apply h4 at h_enter_in_N
             exact h_enter_in_N r
-          ·
-            simp_all
+          · simp_all
             rewrite [← h1]
             unfold WellFormed at h_wf
             obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
@@ -379,46 +369,23 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             simp_all
             apply Exists.intro r
             simp_all
-        ·
-          simp_all
+        · simp_all
           unfold Function.update at h1
           by_cases x2_is_r : x2 = r
-          ·
-            simp_all
+          · simp_all
             rewrite [← h1]
             rewrite [← h_enter_in_N]
             obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
             have h_N_inj := contrapose_injectivity t.N N_inj x3 k
             simp_all
-          ·
-            simp_all
+          · simp_all
             rewrite [← h1]
             have h3 := x_in_N_implies_x_not_in_B t h_wf (t.N x3) x3
             simp at h3
             have h4 := h3 x2
             rewrite [← ne_eq] at *
             symm
-            exact h4 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            exact h4
 
 
 -- TODO
