@@ -12,6 +12,13 @@ structure LP (m n : ℕ) where
   (b : Fin m → ℝ)
   (c : Fin n → ℝ)
 
+noncomputable def zeros {m : Type} [Fintype m] (f : m → ℝ) : Finset m :=
+  Finset.univ.filter (fun x => f x = 0)
+
+def WellFormed_LP {m n : ℕ} (lp : LP m n) : Prop :=
+  (n > m) -- because we have a basic variable per constraint + nonbasic variables
+  ∧ (zeros lp.c).card = n-m
+
 --  Tableau representation (standard form)
     /- LP in standard form: maximize c^T subject to Ax = b, x >= 0
 
@@ -78,9 +85,12 @@ def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
 def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
   ∀ i, t.b i ≥ 0
 
+-- An entering variable should be NEGATIVE in c
+-- A leaving variable should have the minimum positive
+-- ratio in the ratio test.
 noncomputable def pivot {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin n)
-  (_ : t.N k = enter)
+  (_ : t.N k = enter) (_ : t.c enter < 0)
   : Tableau m n :=
 
   let piv := t.A r enter
@@ -95,6 +105,11 @@ noncomputable def pivot {m n : ℕ}
   let B' := Function.update t.B r enter
   let N' := Function.update t.N k oldB
   ⟨A', b', c', v', B', N'⟩
+
+-- We want to find a variable that is in N
+def find_entering_variable {m n : ℕ} (t : Tableau m n) (h_N_nonempty : ∃ enter, (∃k, t.N k = enter)): Option (Fin n) :=
+
+
 
 lemma le_mul : ∀ (a b c : ℝ), 0 < c → a ≤ b → c*a ≤ c*b := by
   intros a b c h1 h2
@@ -116,13 +131,14 @@ lemma some_linear_arith : ∀ (a b c d : ℝ),
   simp at h2
   exact h2
 
-lemma pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
+theorem pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
   (enter : Fin n) (r : Fin m)
   (k : Fin n) (h_enter_in_N : t.N k = enter)
   (h_pivot_pos : 0 < t.A r enter)
   (h_feasible : feasible t)
   (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
-  : feasible (pivot t enter r k h_enter_in_N) :=
+  (h_tc_negative : t.c enter < 0)
+  : feasible (pivot t enter r k h_enter_in_N h_tc_negative) :=
 by
   intro i
   let t' := pivot t enter r k h_enter_in_N
@@ -387,14 +403,13 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             symm
             exact h4
 
-
--- TODO
-lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
-  (enter : Fin n) (r : Fin m)
-  (h_enter_in_N : ∃ k, t.N k = enter)
-  (h_pivot_pos : 0 < t.A r enter)
-  (h_feasible : feasible t)
-  (h_ratio : ∀ i, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
-  (h_c_pos : 0 < t.c enter)
-  : (pivot t enter r h_enter_in_N).v > t.v :=
-  sorry
+-- lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
+--   (enter : Fin n) (r : Fin m) (k : Fin n)
+--   (h_enter_in_N : t.N k = enter)
+--   (h_pivot_pos : 0 < t.A r enter)
+--   (h_feasible : feasible t)
+--   (h_ratio : ∀ i, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
+--   (h_c_pos : 0 < t.c enter)
+--   : (pivot t enter r k h_enter_in_N).v > t.v := by
+--   unfold pivot at *
+--   simp_all
