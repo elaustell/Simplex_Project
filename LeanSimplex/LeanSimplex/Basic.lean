@@ -24,8 +24,6 @@ structure LP (m n : ℕ) where
             - Each b[r] is the value that the corresponding row of A should sum to
             - len(b) = # constraints = len(A)
 
-        c: coefficients of basic variables in objective function
-
         v: Current value of objective function
 
         B: Indices of basic variables
@@ -39,16 +37,6 @@ structure LP (m n : ℕ) where
             - All variables not in the basis are in N.
             - partition the set {0, 1, …, n-1} together with B.
             - candidates for entering the basis during pivoting.
-
-
-      LP:  max cy = v
-        s.t. Ax = b
-             x_i ∈ x ≥ 0  ∀i
-
-            where y = basic variables
-            x = all variables
-            B contains the indices of y in the tableau
-            N contains the indices of x\y in the tableau
 
 
             Simplex Tableau
@@ -77,11 +65,6 @@ def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
   Function.Injective t.N ∧
   Set.range t.B ∪ Set.range t.N = Set.univ ∧
   Set.range t.B ∩ Set.range t.N = ∅
-  -- Need all basic variables to be nonzero and
-  -- all nonbasic variables to be 0
-
-  -- basic variables should form an identity matrix ?
-  -- In other words, the
 
 def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
   fun j =>
@@ -89,11 +72,9 @@ def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
     | some i => t.b i
     | none   => 0
 
--- TODO: i think this is not the correct definition for feasible
 def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
   ∀ i, t.b i ≥ 0
 
--- here r is the leaving variable
 noncomputable def pivot {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin n)
   (h_enter_in_N : t.N k = enter)
@@ -132,7 +113,7 @@ lemma some_linear_arith : ∀ (a b c d : ℝ),
   simp at h2
   exact h2
 
-theorem pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
+lemma pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
   (enter : Fin n) (r : Fin m)
   (k : Fin n) (h_enter_in_N : t.N k = enter)
   (h_pivot_pos : 0 < t.A r enter)
@@ -260,7 +241,8 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
       by_cases a2_r_eq : a2 = r
       · symm
         exact a2_r_eq
-      · unfold Function.update at h5
+      ·
+        unfold Function.update at h5
         simp_all
         -- SO we have a hypothesis that says enter = t.B a2
         -- In other words, that enter was in B
@@ -271,12 +253,14 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         simp_all
     · -- case a1 ≠ r
       by_cases a2_r_eq : a2 = r
-      · simp_all
+      ·
+        simp_all
         unfold Function.update at h5
         simp_all
         have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf enter k h_enter_in_N a1
         simp_all
-      · unfold Function.update at h5
+      ·
+        unfold Function.update at h5
         simp_all
         obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
         apply B_inj at h5
@@ -294,7 +278,8 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         by_cases a2_r_eq : a2 = k
         · symm
           exact a2_r_eq
-        · unfold Function.update at h5
+        ·
+          unfold Function.update at h5
           simp_all
           -- SO we have a hypothesis that says enter = t.B a2
           -- In other words, that enter was in B
@@ -306,13 +291,15 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
           simp_all
       · -- case a1 ≠ k
         by_cases a2_r_eq : a2 = k
-        · simp_all
+        ·
+          simp_all
           unfold Function.update at h5
           simp_all
           have lem : t.N a1 = t.N a1 := by rfl
           have disjointness_lemma := x_in_N_implies_x_not_in_B t h_wf (t.N a1) a1 lem r
           simp_all
-        · unfold Function.update at h5
+        ·
+          unfold Function.update at h5
           simp_all
           obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
           apply N_inj at h5
@@ -340,7 +327,8 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             right
             apply Exists.intro k
             simp_all
-          · left
+          ·
+            left
             apply Exists.intro p
             simp_all
         · -- case x ∈ N
@@ -351,7 +339,8 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             left
             apply Exists.intro r
             simp_all
-          · right
+          ·
+            right
             -- need to find a y ≠ k
             apply Exists.intro p
             by_cases p_is_k : p = k
@@ -363,18 +352,23 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
         apply Set.eq_empty_iff_forall_notMem.mpr
         intro x1
         simp_all
-        intro x2 h1 x3
+        intro x2
+        intro h1
+        intro x3
         unfold Function.update
         by_cases x3_is_k : x3 = k
-        · simp_all
+        ·
+          simp_all
           unfold Function.update at h1
           by_cases x2_is_r : x2 = r
-          · simp_all
+          ·
+            simp_all
             rewrite [← h1]
             have h4 := x_in_N_implies_x_not_in_B t h_wf enter k
             apply h4 at h_enter_in_N
             exact h_enter_in_N r
-          · simp_all
+          ·
+            simp_all
             rewrite [← h1]
             unfold WellFormed at h_wf
             obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
@@ -385,42 +379,55 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             simp_all
             apply Exists.intro r
             simp_all
-        · simp_all
+        ·
+          simp_all
           unfold Function.update at h1
           by_cases x2_is_r : x2 = r
-          · simp_all
+          ·
+            simp_all
             rewrite [← h1]
             rewrite [← h_enter_in_N]
             obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
             have h_N_inj := contrapose_injectivity t.N N_inj x3 k
             simp_all
-          · simp_all
+          ·
+            simp_all
             rewrite [← h1]
             have h3 := x_in_N_implies_x_not_in_B t h_wf (t.N x3) x3
             simp at h3
             have h4 := h3 x2
             rewrite [← ne_eq] at *
             symm
-            exact h4
+            exact h4 
 
--- We should pick the largest c value when we pivot
--- we stop pivoting when all c values are negative
--- so 0 < t.c enter
 
--- h_ratio refers to how we pick the leaving variable:
--- it must have the smallest ratio with the entering variable coefficient
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- TODO
 lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
-  (enter : Fin n) (r : Fin m) (k : Fin n)
-  (h_enter_in_N : t.N k = enter)
+  (enter : Fin n) (r : Fin m)
+  (h_enter_in_N : ∃ k, t.N k = enter)
   (h_pivot_pos : 0 < t.A r enter)
   (h_feasible : feasible t)
-  (h_wf : WellFormed t)
   (h_ratio : ∀ i, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
   (h_c_pos : 0 < t.c enter)
-  : (pivot t enter r k h_enter_in_N).v > t.v := by
-  unfold pivot
-  simp_all
-  unfold feasible at h_feasible
-  simp_all
-  have h1 := h_feasible
-  -- just need to show t.b ≠ 0
+  : (pivot t enter r h_enter_in_N).v > t.v :=
+  sorry
