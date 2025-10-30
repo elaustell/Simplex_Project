@@ -15,9 +15,14 @@ structure LP (m n : ℕ) where
 noncomputable def zeros {m : Type} [Fintype m] (f : m → ℝ) : Finset m :=
   Finset.univ.filter (fun x => f x = 0)
 
+noncomputable def nonzeros {m : Type} [Fintype m] (f : m → ℝ) : Finset m :=
+  Finset.univ.filter (fun x => f x ≠ 0)
+
 def WellFormed_LP {m n : ℕ} (lp : LP m n) : Prop :=
   (n > m) -- because we have a basic variable per constraint + nonbasic variables
-  ∧ (zeros lp.c).card = n-m
+  ∧ (zeros lp.c).toList.length = m -- num basic variables
+  ∧ (nonzeros lp.c).toList.length = n-m -- num nonbasic variables
+  ∧ (zeros lp.c) ∩ (nonzeros lp.c) = ∅
 
 --  Tableau representation (standard form)
     /- LP in standard form: maximize c^T subject to Ax = b, x >= 0
@@ -65,13 +70,107 @@ structure Tableau (m n : ℕ) where
   (c : Fin n → ℝ)
   (v : ℝ)
   (B : Fin m → Fin n) -- basic variables
-  (N : Fin n → Fin n) -- non-basic variables
+  (N : Fin (n-m) → Fin n) -- non-basic variables
 
 def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
   Function.Injective t.B ∧
   Function.Injective t.N ∧
   Set.range t.B ∪ Set.range t.N = Set.univ ∧
   Set.range t.B ∩ Set.range t.N = ∅
+  -- TODO: need one basic variable per constaint aka row of A?
+  -- basically, exactly one row in a column from B should be nonzero.
+  -- ∧ ∀ (i : Fin n), (∃k, t.B k = i) → (∃j, A[i][j] ≠ 0 ∧ ∀l, l ≠ j → A[i][j] == 0)
+
+noncomputable def make_B {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Fin m → Fin n :=
+  have h : (zeros lp.c).toList.length = m := by
+    unfold WellFormed_LP at h_wf
+    simp_all
+  have h2 : m = (zeros lp.c).toList.length := by
+    simp_all
+  -- have h2 : ∀ j : Fin m, ∃ i : Fin ((zeros lp.c).toList.length), i = j := by
+  fun j => (zeros lp.c).toList.get (Fin.cast h2 j)
+
+noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Fin (n-m) → Fin n :=
+  have h : (nonzeros lp.c).toList.length = (n-m) := by
+    unfold WellFormed_LP at h_wf
+    simp_all
+  have h2 : n-m = (nonzeros lp.c).toList.length := by
+    simp_all
+  fun j => (nonzeros lp.c).toList.get (Fin.cast h2 j)
+
+noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
+  ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf⟩
+
+-- TODO: maybe prove by induction on n for the universe function
+-- and then it should apply to all subsets.
+-- lemma univ_tolist_injective : ∀ (n : ℕ), Finset.univ [Fintype n]
+
+-- lemma finset_tolist_injective {n : ℕ} (s : Finset (Fin n)) (x y : Fin n)
+--                           (h: x < s.toList.length ∧ y < s.toList.length)
+--   : s.toList[x] = s.toList[y] → x = y := by
+
+-- lemma list_member_iff {α : Type} (L : List α) (elt : α) : ∃ (i : ℕ), i < L.length → L[i] = elt → elt ∈ L := by
+--   intro h
+
+lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
+    l.get i = l.get j ↔ i = j := by
+    apply List.Nodup.get_inj_iff
+    simp_all
+
+lemma nodup_inj {α : Type} {n : ℕ} (l : List α)
+  (h : n = l.length)
+  (a1 a2 : Fin n)
+  (nodup : l.Nodup)
+  (eq : l[Fin.cast h a1] = l[Fin.cast h a2]) :
+  a1 = a2 :=
+by
+  -- have nodup := Finset.nodup_toList s
+  have h2 := (List.Nodup.get_inj nodup)
+  -- simp_all
+  have h3 := h2 (Fin.cast h a1) (Fin.cast h a2)
+  obtain ⟨h4, h5⟩ := h3
+  simp_all
+
+lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
+  WellFormed (make_tableau lp h_wf) := by
+  unfold WellFormed
+  unfold WellFormed_LP at h_wf
+  obtain ⟨h1, h2, h3, h4⟩ := h_wf
+  unfold make_tableau
+  simp_all
+  constructor
+  · unfold Function.Injective
+    unfold make_B
+    unfold zeros at *
+    have no_duplicates := Finset.nodup_toList {x | lp.c x = 0}
+    intro a1 a2
+    exact nodup_inj ({x | lp.c x = 0} : Finset (Fin n)).toList
+                            h2.symm a1 a2 no_duplicates
+  · constructor
+    · unfold Function.Injective
+      unfold make_N
+      unfold nonzeros at *
+      have no_duplicates := Finset.nodup_toList {x | lp.c x ≠ 0}
+      intro a1 a2
+      exact nodup_inj ({x | lp.c x ≠ 0} : Finset (Fin n)).toList
+                              h3.symm a1 a2 no_duplicates
+    · constructor
+      · unfold make_B
+        unfold make_N
+        unfold zeros
+        unfold nonzeros
+        simp_all
+        apply Set.eq_univ_iff_forall.mpr
+        intro y
+        by_cases y_is_zero : lp.c y = 0
+        · simp_all
+          left
+          apply List.mem_iff_get
+          have h5 := Finset.mem_toList
+          unfold toList
+
+
+
 
 def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
   fun j =>
@@ -89,7 +188,7 @@ def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
 -- A leaving variable should have the minimum positive
 -- ratio in the ratio test.
 noncomputable def pivot {m n : ℕ}
-  (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin n)
+  (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin (n - m))
   (_ : t.N k = enter) (_ : t.c enter < 0)
   : Tableau m n :=
 
@@ -107,7 +206,7 @@ noncomputable def pivot {m n : ℕ}
   ⟨A', b', c', v', B', N'⟩
 
 -- We want to find a variable that is in N
-def find_entering_variable {m n : ℕ} (t : Tableau m n) (h_N_nonempty : ∃ enter, (∃k, t.N k = enter)): Option (Fin n) :=
+-- def find_entering_variable {m n : ℕ} (t : Tableau m n) (h_N_nonempty : ∃ enter, (∃k, t.N k = enter)): Option (Fin n) :=
 
 
 
@@ -133,7 +232,7 @@ lemma some_linear_arith : ∀ (a b c d : ℝ),
 
 theorem pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
   (enter : Fin n) (r : Fin m)
-  (k : Fin n) (h_enter_in_N : t.N k = enter)
+  (k : Fin (n - m)) (h_enter_in_N : t.N k = enter)
   (h_pivot_pos : 0 < t.A r enter)
   (h_feasible : feasible t)
   (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
@@ -195,7 +294,7 @@ by
 
 
 lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
-                      (x : Fin n) (k : Fin n) :
+                      (x : Fin n) (k : Fin (n - m)) :
   (t.N k = x) → (∀ (y : Fin m), t.B y ≠ x) := by
   intros x_in_N y
   unfold WellFormed at h_wf
@@ -242,9 +341,10 @@ lemma contrapose_injectivity {α β : Type} (f : α → β) :
 
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
-  (k : Fin n) (h_enter_in_N : t.N k = enter)
+  (k : Fin (n - m)) (h_enter_in_N : t.N k = enter)
   (h_wf : WellFormed t)
-  : WellFormed (pivot t enter r k h_enter_in_N) := by
+  (h_tc_enter_neg : t.c enter < 0)
+  : WellFormed (pivot t enter r k h_enter_in_N h_tc_enter_neg) := by
   -- unfold WellFormed at *
   -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
   let t' := (pivot t enter r k h_enter_in_N)
