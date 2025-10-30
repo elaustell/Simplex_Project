@@ -131,6 +131,27 @@ by
   obtain ⟨h4, h5⟩ := h3
   simp_all
 
+lemma list_mem_explicit {α : Type} (l : List α) (a : α) : a ∈ l ↔ ∃ n, l.get n = a := by
+  apply List.mem_iff_get
+
+lemma h_implies_h (h : Prop) : h → h := by
+  simp_all
+
+lemma member_inj {α : Type} {s : Finset α} (x : α) : ∃y, s.toList.get y  = x → x ∈ s := by
+  have h1 : x ∈ s.toList ↔ (∃y, s.toList.get y = x) := by
+    apply List.mem_iff_get
+  have h2 := h1.mpr
+  have h3 : x ∈ s.toList ↔ x ∈ s := Finset.mem_toList
+  simp_all
+  obtain ⟨h3,h4⟩ := h1
+  have h_everything := h_implies_h (∃ y, s.toList[↑y] = x)
+  simp_all
+
+  apply Exists.intro
+  intro h3
+  have h4 := h2 h3
+
+
 lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
   WellFormed (make_tableau lp h_wf) := by
   unfold WellFormed
@@ -155,6 +176,7 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
       exact nodup_inj ({x | lp.c x ≠ 0} : Finset (Fin n)).toList
                               h3.symm a1 a2 no_duplicates
     · constructor
+      -- B ∪ N = universe
       · unfold make_B
         unfold make_N
         unfold zeros
@@ -163,11 +185,30 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
         apply Set.eq_univ_iff_forall.mpr
         intro y
         by_cases y_is_zero : lp.c y = 0
+        · left
+          have h6 := list_mem_explicit ({x | lp.c x = 0} : Finset (Fin n)).toList y
+          simp
+          obtain ⟨h7,h8⟩ := h6
+          have h9 : y ∈  ({x | lp.c x = 0} : Finset (Fin n)).toList := by
+            simp_all
+          simp_all
+          obtain ⟨ind, h10⟩ := h7
+          unfold zeros at h2
+          apply Exists.intro (Fin.cast h2 ind)
+          simp_all
         · simp_all
-          left
-          apply List.mem_iff_get
-          have h5 := Finset.mem_toList
-          unfold toList
+          right
+          have h6 := list_mem_explicit ({x | lp.c x ≠ 0} : Finset (Fin n)).toList y
+          obtain ⟨h7,h8⟩ := h6
+          have h9 : y ∈  ({x | lp.c x ≠ 0} : Finset (Fin n)).toList := by
+            simp_all
+          simp_all
+          obtain ⟨ind, h10⟩ := h7
+          unfold nonzeros at h3
+          apply Exists.intro (Fin.cast h3 ind)
+          simp_all
+      · -- B ∩ N = ∅ 
+
 
 
 
