@@ -207,8 +207,26 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
           unfold nonzeros at h3
           apply Exists.intro (Fin.cast h3 ind)
           simp_all
-      · -- B ∩ N = ∅ 
-
+      · -- B ∩ N = ∅
+        apply Set.eq_empty_iff_forall_notMem.mpr
+        intro x
+        simp_all
+        intro y x_in_B z
+        unfold make_B at x_in_B
+        by_contra x_in_N
+        unfold make_N at x_in_N
+        unfold zeros nonzeros at *
+        have h5 := (list_mem_explicit ({x | lp.c x ≠ 0} : Finset (Fin n)).toList x).mpr
+        have h6 := (list_mem_explicit ({x | lp.c x = 0} : Finset (Fin n)).toList x).mpr
+        have h7 : (∃ n_1, ({x | lp.c x ≠ 0} : Finset (Fin n)).toList.get n_1 = x) := by
+          apply Exists.intro (Fin.cast h3.symm z)
+          simp_all
+        have h8 : (∃ n_1, ({x | lp.c x = 0} : Finset (Fin n)).toList.get n_1 = x) := by
+          apply Exists.intro (Fin.cast h2.symm y)
+          simp_all
+        apply h5 at h7
+        apply h6 at h8
+        simp_all
 
 
 
