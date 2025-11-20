@@ -12,10 +12,10 @@ structure LP (m n : ℕ) where
   (b : Fin m → ℝ)
   (c : Fin n → ℝ)
 
-noncomputable def zeros {m : Type} [Fintype m] (f : m → ℝ) : Finset m :=
+noncomputable def zeros {n : Type} [Fintype n] (f : n → ℝ) : Finset n :=
   Finset.univ.filter (fun x => f x = 0)
 
-noncomputable def nonzeros {m : Type} [Fintype m] (f : m → ℝ) : Finset m :=
+noncomputable def nonzeros {n : Type} [Fintype n] (f : n → ℝ) : Finset n :=
   Finset.univ.filter (fun x => f x ≠ 0)
 
 def WellFormed_LP {m n : ℕ} (lp : LP m n) : Prop :=
@@ -37,6 +37,8 @@ def WellFormed_LP {m n : ℕ} (lp : LP m n) : Prop :=
             - len(b) = # constraints = len(A)
 
         v: Current value of objective function
+
+        c: Objective function to maximize
 
         B: Indices of basic variables
             - a basic feasible solution (BFS) is defined by selecting a set of variables
@@ -76,7 +78,12 @@ def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
   Function.Injective t.B ∧
   Function.Injective t.N ∧
   Set.range t.B ∪ Set.range t.N = Set.univ ∧
-  Set.range t.B ∩ Set.range t.N = ∅
+  Set.range t.B ∩ Set.range t.N = ∅ ∧
+  n > m ∧
+  (∀x, t.c x = 0 ↔ x ∈ Set.range t.B) ∧
+  (∀x, t.c x ≠ 0 ↔ x ∈ Set.range t.N)
+
+
   -- TODO: need one basic variable per constaint aka row of A?
   -- basically, exactly one row in a column from B should be nonzero.
   -- ∧ ∀ (i : Fin n), (∃k, t.B k = i) → (∃j, A[i][j] ≠ 0 ∧ ∀l, l ≠ j → A[i][j] == 0)
@@ -101,16 +108,6 @@ noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
 noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
   ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf⟩
 
--- TODO: maybe prove by induction on n for the universe function
--- and then it should apply to all subsets.
--- lemma univ_tolist_injective : ∀ (n : ℕ), Finset.univ [Fintype n]
-
--- lemma finset_tolist_injective {n : ℕ} (s : Finset (Fin n)) (x y : Fin n)
---                           (h: x < s.toList.length ∧ y < s.toList.length)
---   : s.toList[x] = s.toList[y] → x = y := by
-
--- lemma list_member_iff {α : Type} (L : List α) (elt : α) : ∃ (i : ℕ), i < L.length → L[i] = elt → elt ∈ L := by
---   intro h
 
 lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
     l.get i = l.get j ↔ i = j := by
@@ -133,24 +130,6 @@ by
 
 lemma list_mem_explicit {α : Type} (l : List α) (a : α) : a ∈ l ↔ ∃ n, l.get n = a := by
   apply List.mem_iff_get
-
-lemma h_implies_h (h : Prop) : h → h := by
-  simp_all
-
-lemma member_inj {α : Type} {s : Finset α} (x : α) : ∃y, s.toList.get y  = x → x ∈ s := by
-  have h1 : x ∈ s.toList ↔ (∃y, s.toList.get y = x) := by
-    apply List.mem_iff_get
-  have h2 := h1.mpr
-  have h3 : x ∈ s.toList ↔ x ∈ s := Finset.mem_toList
-  simp_all
-  obtain ⟨h3,h4⟩ := h1
-  have h_everything := h_implies_h (∃ y, s.toList[↑y] = x)
-  simp_all
-
-  apply Exists.intro
-  intro h3
-  have h4 := h2 h3
-
 
 lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
   WellFormed (make_tableau lp h_wf) := by
@@ -207,28 +186,58 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
           unfold nonzeros at h3
           apply Exists.intro (Fin.cast h3 ind)
           simp_all
-      · -- B ∩ N = ∅
-        apply Set.eq_empty_iff_forall_notMem.mpr
-        intro x
-        simp_all
-        intro y x_in_B z
-        unfold make_B at x_in_B
-        by_contra x_in_N
-        unfold make_N at x_in_N
-        unfold zeros nonzeros at *
-        have h5 := (list_mem_explicit ({x | lp.c x ≠ 0} : Finset (Fin n)).toList x).mpr
-        have h6 := (list_mem_explicit ({x | lp.c x = 0} : Finset (Fin n)).toList x).mpr
-        have h7 : (∃ n_1, ({x | lp.c x ≠ 0} : Finset (Fin n)).toList.get n_1 = x) := by
-          apply Exists.intro (Fin.cast h3.symm z)
+      · constructor
+        · -- B ∩ N = ∅
+          apply Set.eq_empty_iff_forall_notMem.mpr
+          intro x
           simp_all
-        have h8 : (∃ n_1, ({x | lp.c x = 0} : Finset (Fin n)).toList.get n_1 = x) := by
-          apply Exists.intro (Fin.cast h2.symm y)
+          intro y x_in_B z
+          unfold make_B at x_in_B
+          by_contra x_in_N
+          unfold make_N at x_in_N
+          unfold zeros nonzeros at *
+          have h5 := (list_mem_explicit ({x | lp.c x ≠ 0} : Finset (Fin n)).toList x).mpr
+          have h6 := (list_mem_explicit ({x | lp.c x = 0} : Finset (Fin n)).toList x).mpr
+          have h7 : (∃ n_1, ({x | lp.c x ≠ 0} : Finset (Fin n)).toList.get n_1 = x) := by
+            apply Exists.intro (Fin.cast h3.symm z)
+            simp_all
+          have h8 : (∃ n_1, ({x | lp.c x = 0} : Finset (Fin n)).toList.get n_1 = x) := by
+            apply Exists.intro (Fin.cast h2.symm y)
+            simp_all
+          apply h5 at h7
+          apply h6 at h8
           simp_all
-        apply h5 at h7
-        apply h6 at h8
-        simp_all
+        · constructor
+          · intro x
+            constructor
+            · intro h5
+              unfold make_B
+              unfold zeros
+              simp_all
+              have h6 : x ∈ ({x | lp.c x = 0}: Finset (Fin n)) := by
+                simp_all
+              -- apply
+              -- apply List.get_of_mem
+              have h7 : x ∈ ({x | lp.c x = 0} : Finset (Fin n)).toList := by
+                apply Finset.mem_toList.mpr h6
+              have h8 := List.mem_iff_getElem.mp h7
+              obtain ⟨y, hy, h8⟩ := h8
+              sorry
+            · intro h5
+              unfold make_B at h5
+              unfold zeros at h5
+              obtain ⟨y,h5⟩ := h5
+              sorry
+          · intro x
+            sorry
 
 
+lemma N_nonempty {m n : ℕ} (t : Tableau m n) : WellFormed t → ∃ enter, (∃k, t.N k = enter) := by
+  intro h
+  unfold WellFormed at h
+  obtain ⟨_,_,_,_,h1,_,_,_⟩ := h
+  have h2 := n-m
+  sorry
 
 
 def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
@@ -248,7 +257,7 @@ def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
 -- ratio in the ratio test.
 noncomputable def pivot {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin (n - m))
-  (_ : t.N k = enter) (_ : t.c enter < 0)
+  (_ : t.N k = enter) (_ : t.c enter > 0)
   : Tableau m n :=
 
   let piv := t.A r enter
@@ -264,15 +273,158 @@ noncomputable def pivot {m n : ℕ}
   let N' := Function.update t.N k oldB
   ⟨A', b', c', v', B', N'⟩
 
--- We want to find a variable that is in N
--- def find_entering_variable {m n : ℕ} (t : Tableau m n) (h_N_nonempty : ∃ enter, (∃k, t.N k = enter)): Option (Fin n) :=
 
+noncomputable def helper_find_argmin {α : Type} (l : List α) (f : α → ℝ) (current_min : α) : α :=
+  match l with
+  | [] => current_min
+  | head :: tail =>
+    if f current_min < f head
+      then helper_find_argmin tail f current_min
+      else helper_find_argmin tail f head
+
+-- Returns the element of type α from l that results in the minimum
+-- value in the range of f
+noncomputable def List.find_argmin {α : Type} (l : List α) (f : α → ℝ) : Option α :=
+  match l with
+  | [] => none
+  | head :: tail => some (helper_find_argmin tail f head)
+
+-- We want to find a variable that is in N
+-- with a negative coefficient
+-- more specifically, the most negative coefficient in c
+noncomputable def find_entering_variable {m n : ℕ} (t : Tableau m n)
+  : Option (Fin n) :=
+  let neg_candidates_indices := (Finset.univ.image t.N).filter (fun x => t.c x > 0)
+  neg_candidates_indices.toList.find_argmin t.c
+
+lemma enter_var_pos_coefficient {m n : ℕ} (t : Tableau m n) (enter : Fin n) :
+  (find_entering_variable t) = some enter → t.c enter > 0 := by
+  sorry
+
+lemma entering_in_N {m n : ℕ} (t : Tableau m n) :
+  (∃x, t.c x > 0) → ∃k, t.N k = find_entering_variable t := by
+  intro h
+  unfold find_entering_variable
+  simp_all
+  unfold List.find_argmin
+  sorry
+  -- have h1 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList ≠ [] := by
+    -- sorry
+  -- by_cases h2 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList = []
+  -- · rewrite [h2]
+  --   simp
+  --   apply List.isEmpty_iff.mpr at h2
+  --   obtain ⟨y,h⟩ := h
+  --   have h1 : ∀x, x ∈ (Finset.univ.image t.N) → ∃y, t.N y = x := by
+  --     simp_all
+  --   have h3 : y ∈ {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList := by
+  --     apply Finset.mem_toList.mpr
+  --     simp_all
+  --     have h5 := h1 y
+  --     simp
+  --     constructor
+      -- · apply h1 y
+      --   -- rewrite [Finset.image_univ_equiv]
+      --   have h3 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList.isEmpty = false := by
+      --     apply List.isEmpty_eq_false_iff.mpr
+
+
+  --     ·
+  --     simp [Finset.image_univ_equiv] at
+  --     simp_all
+
+  --   apply List.isEmpty_eq_false_iff_exists_mem
+  -- apply Finset.mem_toList
+  -- unfold Finset.toList
+
+
+
+
+-- A leaving variable should have the minimum positive
+-- ratio in the ratio test.
+-- h_ratio : ∀ i : Fin m, t.A i enter > 0
+--         → t.b r / t.A r enter ≤ t.b i / t.A i enter)
+-- Should be in B
+noncomputable def find_leaving_variable {m n : ℕ} (t : Tableau m n) (enter : Fin n)
+      : Option (Fin m) :=
+  let candidates := (Finset.univ).filter (fun x : Fin m => (t.b x) / (t.A x enter) ≥ 0)
+  candidates.toList.find_argmin (fun x : Fin m => (t.b x) / (t.A x enter))
+
+noncomputable def all_bases_list (m n : ℕ) : List (Fin m → Fin n) :=
+  (Finset.univ : Finset (Fin m → Fin n)).toList
+
+def List.indexOf {α : Type} [DecidableEq α] (L : List α) (elt : α) : Option ℕ :=
+  match L with
+  | [] => none
+  | head :: tail => if head == elt then some 0 else
+      match tail.indexOf elt with
+      | none => none
+      | some num => some (num + 1)
+
+lemma all_bases_have_index {m n : ℕ} (f : (Fin m → Fin n)) :
+  ((all_bases_list m n).indexOf f).isSome = true := by
+    sorry
+
+noncomputable def basis_index {m n : ℕ} (t : Tableau m n) : Nat :=
+  ((all_bases_list m n).indexOf t.B).get (all_bases_have_index t.B)
+
+noncomputable def tableau_measure {m n : ℕ} (t : Tableau m n) : Nat :=
+  (all_bases_list m n).length - basis_index t
+
+lemma pivot_decreases_measure
+  {m n : ℕ} (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin (n - m))
+  (enter_in_N : t.N k = enter) (enter_pos_c : t.c enter > 0) :
+    tableau_measure (pivot t enter r k enter_in_N enter_pos_c) < tableau_measure t := by
+    unfold tableau_measure
+    unfold pivot
+    simp_all
+    unfold basis_index
+    unfold List.indexOf
+    simp_all
+    unfold all_bases_list
+    simp_all
+    
+    by_cases h : Finset.univ.toList = []
+
+
+noncomputable def pivot_until_done {m n : ℕ} (t : Tableau m n) : Tableau m n :=
+  match h : (find_entering_variable t) with
+  | none => t
+  | some enter =>
+    have h_issome : (find_entering_variable t).isSome := by
+      rewrite [h]
+      apply Option.isSome_some
+    match find_leaving_variable t enter with
+    | none => t
+    | some leaving =>
+        have h1 :  ∃ x, t.c x > 0 := by
+          apply Exists.intro enter
+          simp_all
+          apply (enter_var_pos_coefficient t enter h)
+        have h_enter_in_N := entering_in_N t h1
+        have N_k_is_enter : t.N (Classical.choose h_enter_in_N) = enter := by
+          have h1 := Classical.choose_spec h_enter_in_N
+          simp_all
+        have t_c_positive : t.c enter > 0 := by
+          have h2 := enter_var_pos_coefficient t enter
+          simp_all
+        pivot_until_done
+          (pivot t enter leaving (Classical.choose h_enter_in_N) N_k_is_enter t_c_positive)
+termination_by tableau_measure t
+decreasing_by
+  -- expose pattern-match equalities
+  all_goals
+    simp [tableau_measure]
+    -- then apply the decrease lemma
+    apply pivot_decreases_measure
+
+noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
+  let t := make_tableau lp h_wflp
 
 
 lemma le_mul : ∀ (a b c : ℝ), 0 < c → a ≤ b → c*a ≤ c*b := by
   intros a b c h1 h2
   simp_all
-
 
 lemma some_linear_arith : ∀ (a b c d : ℝ),
   0 < a  → a * (b/c) ≤ a * (d/a) → (a/c) * b ≤ d := by
@@ -357,7 +509,7 @@ lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   (t.N k = x) → (∀ (y : Fin m), t.B y ≠ x) := by
   intros x_in_N y
   unfold WellFormed at h_wf
-  obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+  obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint, _⟩ := h_wf
   by_contra h_cont
   have h1 : x ∈ (Set.range t.B) := by
     simp
@@ -397,6 +549,29 @@ lemma contrapose_injectivity {α β : Type} (f : α → β) :
   simp_all
   apply h
 
+-- Everything that was zero should stay zero
+-- except that entering and leaving variables switch
+lemma pivot_preserves_zeros_cardinality {m n : ℕ}
+  (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
+  (k : Fin (n - m)) (h_enter_in_N : t.N k = enter)
+  (h_wf : WellFormed t)
+  (h_tc_enter_neg : t.c enter < 0)
+  (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b leaving / t.A leaving enter ≤ t.b i / t.A i enter)
+   :
+    ∀x, x ∈ (zeros t.c) →
+        x ∈ (zeros (pivot t enter leaving k h_enter_in_N h_tc_enter_neg).c)
+      ∨ x == enter := by
+
+    intros x h
+    by_cases x_is_enter : x = enter
+    · right
+      simp_all
+    · left
+      unfold pivot
+      unfold zeros at *
+      simp_all
+      unfold WellFormed at h_wf
+
 
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
@@ -406,7 +581,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
   : WellFormed (pivot t enter r k h_enter_in_N h_tc_enter_neg) := by
   -- unfold WellFormed at *
   -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
-  let t' := (pivot t enter r k h_enter_in_N)
+  let t' := (pivot t enter r k h_enter_in_N h_tc_enter_neg)
   constructor
   · -- WTS B' is Injective
     unfold pivot
@@ -516,59 +691,73 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
             by_cases p_is_k : p = k
             · simp_all
             · simp_all
-      · -- WTS N' ∩ B' = ∅
-        unfold pivot
-        simp_all
-        apply Set.eq_empty_iff_forall_notMem.mpr
-        intro x1
-        simp_all
-        intros x2 h1 x3
-        unfold Function.update
-        by_cases x3_is_k : x3 = k
-        · simp_all
-          unfold Function.update at h1
-          by_cases x2_is_r : x2 = r
+      · constructor
+        · -- WTS N' ∩ B' = ∅
+          unfold pivot
+          simp_all
+          apply Set.eq_empty_iff_forall_notMem.mpr
+          intro x1
+          simp_all
+          intros x2 h1 x3
+          unfold Function.update
+          by_cases x3_is_k : x3 = k
           · simp_all
-            rewrite [← h1]
-            have h4 := x_in_N_implies_x_not_in_B t h_wf enter k
-            apply h4 at h_enter_in_N
-            exact h_enter_in_N r
+            unfold Function.update at h1
+            by_cases x2_is_r : x2 = r
+            · simp_all
+              rewrite [← h1]
+              have h4 := x_in_N_implies_x_not_in_B t h_wf enter k
+              apply h4 at h_enter_in_N
+              exact h_enter_in_N r
+            · simp_all
+              rewrite [← h1]
+              unfold WellFormed at h_wf
+              obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+              unfold Function.Injective at B_inj
+              contrapose B_inj
+              simp_all
+              apply Exists.intro x2
+              simp_all
+              apply Exists.intro r
+              simp_all
           · simp_all
-            rewrite [← h1]
-            unfold WellFormed at h_wf
-            obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
-            unfold Function.Injective at B_inj
-            contrapose B_inj
-            simp_all
-            apply Exists.intro x2
-            simp_all
-            apply Exists.intro r
-            simp_all
-        · simp_all
-          unfold Function.update at h1
-          by_cases x2_is_r : x2 = r
-          · simp_all
-            rewrite [← h1]
-            rewrite [← h_enter_in_N]
-            obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
-            have h_N_inj := contrapose_injectivity t.N N_inj x3 k
-            simp_all
-          · simp_all
-            rewrite [← h1]
-            have h3 := x_in_N_implies_x_not_in_B t h_wf (t.N x3) x3
-            simp at h3
-            have h4 := h3 x2
-            rewrite [← ne_eq] at *
-            symm
-            exact h4
+            unfold Function.update at h1
+            by_cases x2_is_r : x2 = r
+            · simp_all
+              rewrite [← h1]
+              rewrite [← h_enter_in_N]
+              obtain ⟨B_inj, N_inj, B_N_universe, B_N_disjoint⟩ := h_wf
+              have h_N_inj := contrapose_injectivity t.N N_inj x3 k
+              simp_all
+            · simp_all
+              rewrite [← h1]
+              have h3 := x_in_N_implies_x_not_in_B t h_wf (t.N x3) x3
+              simp at h3
+              have h4 := h3 x2
+              rewrite [← ne_eq] at *
+              symm
+              exact h4
+        · unfold WellFormed at h_wf
+          unfold pivot
+          obtain ⟨h1, h2, h3, h4, h5, h6⟩ := h_wf
+          simp_all
+          constructor
+          · intro x
+            constructor
+            · intro hyp
+              unfold Function.update
 
--- lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
---   (enter : Fin n) (r : Fin m) (k : Fin n)
---   (h_enter_in_N : t.N k = enter)
---   (h_pivot_pos : 0 < t.A r enter)
---   (h_feasible : feasible t)
---   (h_ratio : ∀ i, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
---   (h_c_pos : 0 < t.c enter)
---   : (pivot t enter r k h_enter_in_N).v > t.v := by
---   unfold pivot at *
---   simp_all
+
+
+
+
+lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
+  (enter : Fin n) (r : Fin m) (k : Fin (n - m))
+  (h_enter_in_N : t.N k = enter)
+  (h_pivot_pos : 0 < t.A r enter)
+  (h_ratio : t.b r / t.A r enter > 0)
+  (h_c_pos : t.c enter > 0)
+  : (pivot t enter r k h_enter_in_N h_c_pos).v > t.v := by
+
+  unfold pivot at *
+  simp_all
