@@ -364,10 +364,8 @@ lemma pivot_decreases_measure
   (new_basis : Function.update t.B r enter ∉ t.Visited_Bases) :
     decreasing_measure (pivot t enter r k enter_in_N enter_pos_c new_basis)
     < decreasing_measure t := by
-    -- abbreviations
+
   let B' := Function.update t.B r enter
-  let A := (all_bases m n).card
-  let C := t.Visited_Bases.card
 
   have hB' : B' ∈ all_bases m n := by
     unfold all_bases
@@ -414,16 +412,14 @@ noncomputable def pivot_until_done {m n : ℕ} (t : Tableau m n) : Tableau m n :
         have t_c_positive : t.c enter > 0 := by
           have h2 := enter_var_pos_coefficient t enter
           simp_all
-        have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by sorry
+        have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by
+          sorry
         pivot_until_done
           (pivot t enter leaving (Classical.choose h_enter_in_N) N_k_is_enter t_c_positive new_base)
 termination_by decreasing_measure t
 decreasing_by
-  -- expose pattern-match equalities
-  all_goals
-    simp [decreasing_measure]
-    -- then apply the decrease lemma
-    apply pivot_decreases_measure
+  unfold decreasing_measure
+  apply pivot_decreases_measure
 
 noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
   let t := make_tableau lp h_wflp
