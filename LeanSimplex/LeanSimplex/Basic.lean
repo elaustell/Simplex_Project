@@ -73,6 +73,7 @@ structure Tableau (m n : ℕ) where
   (v : ℝ)
   (B : Fin m → Fin n) -- basic variables
   (N : Fin (n-m) → Fin n) -- non-basic variables
+  (Visited_Bases : Finset (Fin m → Fin n))
 
 def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
   Function.Injective t.B ∧
@@ -106,7 +107,7 @@ noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
   fun j => (nonzeros lp.c).toList.get (Fin.cast h2 j)
 
 noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
-  ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf⟩
+  ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf, {make_B lp h_wf}⟩
 
 
 lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
@@ -258,6 +259,7 @@ def feasible {m n : ℕ} (t : Tableau m n) : Prop :=
 noncomputable def pivot {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin (n - m))
   (_ : t.N k = enter) (_ : t.c enter > 0)
+  (new_basis : Function.update t.B r enter ∉ t.Visited_Bases)
   : Tableau m n :=
 
   let piv := t.A r enter
@@ -271,7 +273,8 @@ noncomputable def pivot {m n : ℕ}
   -- updated B and N
   let B' := Function.update t.B r enter
   let N' := Function.update t.N k oldB
-  ⟨A', b', c', v', B', N'⟩
+  let Visited_Bases' := t.Visited_Bases.cons B' new_basis
+  ⟨A', b', c', v', B', N', Visited_Bases'⟩
 
 
 noncomputable def helper_find_argmin {α : Type} (l : List α) (f : α → ℝ) (current_min : α) : α :=
@@ -350,42 +353,45 @@ noncomputable def find_leaving_variable {m n : ℕ} (t : Tableau m n) (enter : F
   let candidates := (Finset.univ).filter (fun x : Fin m => (t.b x) / (t.A x enter) ≥ 0)
   candidates.toList.find_argmin (fun x : Fin m => (t.b x) / (t.A x enter))
 
-noncomputable def all_bases_list (m n : ℕ) : List (Fin m → Fin n) :=
-  (Finset.univ : Finset (Fin m → Fin n)).toList
+def all_bases (m n : ℕ) : Finset (Fin m → Fin n) := Finset.univ
 
-def List.indexOf {α : Type} [DecidableEq α] (L : List α) (elt : α) : Option ℕ :=
-  match L with
-  | [] => none
-  | head :: tail => if head == elt then some 0 else
-      match tail.indexOf elt with
-      | none => none
-      | some num => some (num + 1)
-
-lemma all_bases_have_index {m n : ℕ} (f : (Fin m → Fin n)) :
-  ((all_bases_list m n).indexOf f).isSome = true := by
-    sorry
-
-noncomputable def basis_index {m n : ℕ} (t : Tableau m n) : Nat :=
-  ((all_bases_list m n).indexOf t.B).get (all_bases_have_index t.B)
-
-noncomputable def tableau_measure {m n : ℕ} (t : Tableau m n) : Nat :=
-  (all_bases_list m n).length - basis_index t
+def decreasing_measure {m n : ℕ} (t : Tableau m n) : Nat :=
+  (all_bases m n).card - t.Visited_Bases.card
 
 lemma pivot_decreases_measure
   {m n : ℕ} (t : Tableau m n) (enter : Fin n) (r : Fin m) (k : Fin (n - m))
-  (enter_in_N : t.N k = enter) (enter_pos_c : t.c enter > 0) :
-    tableau_measure (pivot t enter r k enter_in_N enter_pos_c) < tableau_measure t := by
-    unfold tableau_measure
-    unfold pivot
-    simp_all
-    unfold basis_index
-    unfold List.indexOf
-    simp_all
-    unfold all_bases_list
-    simp_all
-    
-    by_cases h : Finset.univ.toList = []
+  (enter_in_N : t.N k = enter) (enter_pos_c : t.c enter > 0)
+  (new_basis : Function.update t.B r enter ∉ t.Visited_Bases) :
+    decreasing_measure (pivot t enter r k enter_in_N enter_pos_c new_basis)
+    < decreasing_measure t := by
+    -- abbreviations
+  let B' := Function.update t.B r enter
+  let A := (all_bases m n).card
+  let C := t.Visited_Bases.card
 
+  have hB' : B' ∈ all_bases m n := by
+    unfold all_bases
+    simp_all
+
+  -- Because B' ∈ all_bases but B' ∉ t.Visited_Bases, and t.Visited_Bases ⊆ all_bases,
+  -- we get strict inequality:
+  have hcard_lt : t.Visited_Bases.card < (all_bases m n).card := by
+    unfold all_bases
+    apply Finset.card_lt_card
+    apply Finset.ssubset_univ_iff.mpr
+    by_contra h_contra
+    apply Finset.eq_univ_iff_forall.mp at h_contra
+    simp_all
+
+  -- from `C < A` we get `C + 1 ≤ A`
+  have hsucc_le : t.Visited_Bases.card + 1 ≤ (all_bases m n).card := Nat.succ_le_of_lt hcard_lt
+
+  unfold decreasing_measure
+  unfold pivot
+  simp_all
+  apply Nat.sub_lt_sub_left
+  · exact hcard_lt
+  simp_all
 
 noncomputable def pivot_until_done {m n : ℕ} (t : Tableau m n) : Tableau m n :=
   match h : (find_entering_variable t) with
@@ -408,13 +414,14 @@ noncomputable def pivot_until_done {m n : ℕ} (t : Tableau m n) : Tableau m n :
         have t_c_positive : t.c enter > 0 := by
           have h2 := enter_var_pos_coefficient t enter
           simp_all
+        have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by sorry
         pivot_until_done
-          (pivot t enter leaving (Classical.choose h_enter_in_N) N_k_is_enter t_c_positive)
-termination_by tableau_measure t
+          (pivot t enter leaving (Classical.choose h_enter_in_N) N_k_is_enter t_c_positive new_base)
+termination_by decreasing_measure t
 decreasing_by
   -- expose pattern-match equalities
   all_goals
-    simp [tableau_measure]
+    simp [decreasing_measure]
     -- then apply the decrease lemma
     apply pivot_decreases_measure
 
