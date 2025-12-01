@@ -7,10 +7,75 @@ import Mathlib.Data.Set.Basic
 
 open Matrix
 
+inductive CmpOp
+  | leq
+  | eq
+  | geq
+
+def CmpOp.eval (op : CmpOp) (x y : ℝ) : Prop :=
+  match op with
+  | .leq => x ≤ y
+  | .eq => x = y
+  | .geq => x ≥ y
+
+-- infix:50 " ⋈ " => CmpOp.eval
+
+structure constraints (n : ℕ) where
+  (A : Fin n → ℝ)
+  (b : ℝ)
+  (ops : CmpOp)
+
+inductive objective
+  | max
+  | min
+
+structure generic_LP (m n : ℕ) where
+  (cons : Fin m → constraints n)
+  (obj : objective)
+  (x : Fin n → ℝ)
+  (c : Fin n → ℝ)
+
+-- max ∑ᵢ cᵢ xᵢ
+-- s.t. ∑ᵢ Aⱼᵢxᵢ ≤ bⱼ, ∀j
+-- xᵢ ≥ 0, ∀i
+structure standard_LP (m n : ℕ) where
+  (A : Matrix (Fin m) (Fin n) ℝ)
+  (b : Fin m → ℝ)
+  (c : Fin n → ℝ)
+
+def solution_is_feasible_standard_LP {m n : ℕ} (lp : standard_LP m n) (x : Fin n → ℝ) : Prop :=
+  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) ≤ lp.b j) ∧
+  ∀ (i : Fin n), x i ≥ 0
+
+-- def make_standard {m n : ℕ} (lp : generic_LP m n) : LP m n :=
+--   let c := match lp.obj with
+--     | min => (fun i => -1 * lp.c i)
+--     | max => lp.c
+--   let A := fun i : Fin m => fun j => match lp.constraints.ops with
+--     | leq => lp.constraints.A i j
+--     | eq => lp.constraints.A i j
+--     | geq =>  -1 * (lp.constraints.A i j)
+
 structure LP (m n : ℕ) where
   (A : Matrix (Fin m) (Fin n) ℝ)
   (b : Fin m → ℝ)
   (c : Fin n → ℝ)
+
+def solution_is_feasible_LP {m n : ℕ} (lp : LP m n) (x : Fin n → ℝ) : Prop :=
+  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) = lp.b j) ∧
+  ∀ (i : Fin n), x i ≥ 0
+
+def add_slack_variables {m n : ℕ} (lp : standard_LP m n) : LP m (n + m) :=
+  let c := fun i : Fin (n + m) => if h : i.val < n then lp.c (Fin.castLT i h) else 0
+  let b := lp.b
+  let A := fun j : Fin m => fun i : Fin (n + m) =>
+    if h : i.val < n then lp.A j (Fin.castLT i h) else 1
+  ⟨A,b,c⟩
+
+theorem adding_slack_equivalent_LP {m n : ℕ} : ∀ (lp : standard_LP m n),
+  ∀x, solution_is_feasible_standard_LP lp x ↔
+  solution_is_feasible_LP (add_slack_variables lp) x
+
 
 noncomputable def zeros {n : Type} [Fintype n] (f : n → ℝ) : Finset n :=
   Finset.univ.filter (fun x => f x = 0)
@@ -56,12 +121,15 @@ def WellFormed_LP {m n : ℕ} (lp : LP m n) : Prop :=
 
             Simplex Tableau
 
+
+
+
                         x0      x1      x2   ...    xn-1   |  RHS b
-                B0   A[0][0] A[0][1] A[0][2] ... A[0][n-1] |   b[0]
-                B1   A[1][0] A[1][1] A[1][2] ... A[1][n-1] |   b[1]
-                B2   A[2][0] A[2][1] A[2][2] ... A[2][n-1] |   b[2]
-                ...
-                Bm-1 A[m-1][0]  ...               ...      | b[m-1]
+                     A[0][0] A[0][1] A[0][2] ... A[0][n-1] |   b[0]
+                     A[1][0] A[1][1] A[1][2] ... A[1][n-1] |   b[1]
+                     A[2][0] A[2][1] A[2][2] ... A[2][n-1] |   b[2]
+                        ⋮       ⋮       ⋮      ⋮      ⋮           ⋮
+                     A[m-1][0]  ...   ...         ...      | b[m-1]
                 -------------------------------------------
                         c[0]   c[1]    c[2]  ...   c[n-1]  |  v
 
@@ -98,9 +166,9 @@ def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
   Set.range t.B ∪ Set.range t.N = Set.univ ∧
   Set.range t.B ∩ Set.range t.N = ∅ ∧
   n > m ∧
-  (∀x, t.c x = 0 ↔ x ∈ Set.range t.B) ∧
-  (∀x, t.c x ≠ 0 ↔ x ∈ Set.range t.N) ∧
-  t.v = t.objective_value
+  -- (∀x, t.c x = 0 ↔ x ∈ Set.range t.B) ∧
+  (∀x, t.c x ≠ 0 ↔ x ∈ Set.range t.N)
+  -- t.v = t.objective_value
 
 
   -- TODO: need one basic variable per constaint aka row of A?
@@ -205,8 +273,7 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
           unfold nonzeros at h3
           apply Exists.intro (Fin.cast h3 ind)
           simp_all
-      · constructor
-        · -- B ∩ N = ∅
+      · -- B ∩ N = ∅
           apply Set.eq_empty_iff_forall_notMem.mpr
           intro x
           simp_all
@@ -226,29 +293,31 @@ lemma wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
           apply h5 at h7
           apply h6 at h8
           simp_all
-        · constructor
-          · intro x
-            constructor
-            · intro h5
-              unfold make_B
-              unfold zeros
-              simp_all
-              have h6 : x ∈ ({x | lp.c x = 0}: Finset (Fin n)) := by
-                simp_all
-              -- apply
-              -- apply List.get_of_mem
-              have h7 : x ∈ ({x | lp.c x = 0} : Finset (Fin n)).toList := by
-                apply Finset.mem_toList.mpr h6
-              have h8 := List.mem_iff_getElem.mp h7
-              obtain ⟨y, hy, h8⟩ := h8
-              sorry
-            · intro h5
-              unfold make_B at h5
-              unfold zeros at h5
-              obtain ⟨y,h5⟩ := h5
-              sorry
-          · intro x
-            sorry
+
+
+        -- · constructor
+        --   · intro x
+        --     constructor
+        --     · intro h5
+        --       unfold make_B
+        --       unfold zeros
+        --       simp_all
+        --       have h6 : x ∈ ({x | lp.c x = 0}: Finset (Fin n)) := by
+        --         simp_all
+        --       -- apply
+        --       -- apply List.get_of_mem
+        --       have h7 : x ∈ ({x | lp.c x = 0} : Finset (Fin n)).toList := by
+        --         apply Finset.mem_toList.mpr h6
+        --       have h8 := List.mem_iff_getElem.mp h7
+        --       obtain ⟨y, hy, h8⟩ := h8
+        --       sorry
+        --     · intro h5
+        --       unfold make_B at h5
+        --       unfold zeros at h5
+        --       obtain ⟨y,h5⟩ := h5
+        --       sorry
+        --   · intro x
+        --     sorry
 
 
 lemma N_nonempty {m n : ℕ} (t : Tableau m n) : WellFormed t → ∃ enter, (∃k, t.N k = enter) := by
@@ -308,12 +377,69 @@ noncomputable def helper_find_argmin {α : Type} (l : List α) (f : α → ℝ) 
       then helper_find_argmin tail f current_min
       else helper_find_argmin tail f head
 
+
+lemma helper_find_argmin_membership {α : Type} (l : List α) (f : α → ℝ) :
+    ∀ (current_min : α),
+    (helper_find_argmin l f current_min) ∈ l
+  ∨ (helper_find_argmin l f current_min) = current_min := by
+
+  induction l with
+  | nil =>
+    unfold helper_find_argmin
+    simp_all
+  | cons head tail IH =>
+    simp_all
+    intro current_min
+    by_cases h : f current_min < f head
+    · unfold helper_find_argmin
+      simp_all
+      have IH1 := IH current_min
+      cases IH1
+      · rename_i IH1
+        left
+        right
+        exact IH1
+      · rename_i IH1
+        right
+        exact IH1
+    · unfold helper_find_argmin
+      simp [h]
+      have IH1 := IH head
+      cases IH1
+      · rename_i IH1
+        left
+        right
+        exact IH1
+      · rename_i IH1
+        left
+        left
+        exact IH1
+
+
 -- Returns the element of type α from l that results in the minimum
 -- value in the range of f
 noncomputable def List.find_argmin {α : Type} (l : List α) (f : α → ℝ) : Option α :=
   match l with
   | [] => none
   | head :: tail => some (helper_find_argmin tail f head)
+
+lemma List.find_argmin_preserves_membership {α : Type} (l : List α) (f : α → ℝ) (a : α)
+  (h : l.find_argmin f = some a) : a ∈ l := by
+  unfold List.find_argmin at h
+  induction l with
+  | nil =>
+    simp_all
+  | cons head1 tail1 IH1 =>
+    simp_all
+    have h1 := helper_find_argmin_membership tail1 f head1
+    simp_all
+    cases h1
+    · rename_i h1
+      right
+      exact h1
+    · rename_i h2
+      left
+      exact h2
 
 -- We want to find a variable that is in N
 -- with a negative coefficient
@@ -327,43 +453,45 @@ lemma enter_var_pos_coefficient {m n : ℕ} (t : Tableau m n) (enter : Fin n) :
   (find_entering_variable t) = some enter → t.c enter > 0 := by
   sorry
 
-lemma entering_in_N {m n : ℕ} (t : Tableau m n) :
+lemma entering_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) :
   (∃x, t.c x > 0) → ∃k, t.N k = find_entering_variable t := by
   intro h
   unfold find_entering_variable
   simp_all
   unfold List.find_argmin
-  sorry
-  -- have h1 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList ≠ [] := by
-    -- sorry
-  -- by_cases h2 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList = []
-  -- · rewrite [h2]
-  --   simp
-  --   apply List.isEmpty_iff.mpr at h2
-  --   obtain ⟨y,h⟩ := h
-  --   have h1 : ∀x, x ∈ (Finset.univ.image t.N) → ∃y, t.N y = x := by
-  --     simp_all
-  --   have h3 : y ∈ {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList := by
-  --     apply Finset.mem_toList.mpr
-  --     simp_all
-  --     have h5 := h1 y
-  --     simp
-  --     constructor
-      -- · apply h1 y
-      --   -- rewrite [Finset.image_univ_equiv]
-      --   have h3 : {x ∈ Finset.image t.N Finset.univ | t.c x < 0}.toList.isEmpty = false := by
-      --     apply List.isEmpty_eq_false_iff.mpr
-
-
-  --     ·
-  --     simp [Finset.image_univ_equiv] at
-  --     simp_all
-
-  --   apply List.isEmpty_eq_false_iff_exists_mem
-  -- apply Finset.mem_toList
-  -- unfold Finset.toList
-
-
+  obtain ⟨x,h⟩ := h
+  unfold WellFormed at h_wf
+  obtain ⟨_,_,_,_,_,h2⟩ := h_wf
+  split
+  · rename_i l h_contra
+    have h1 : x ∈ {x ∈ Finset.image t.N Finset.univ | t.c x > 0} := by
+      simp
+      have h3 := (h2 x).mp
+      have h4 : t.c x < 0 ∨ 0 < t.c x := by
+        right
+        exact h
+      have h5 := ne_iff_lt_or_gt.mpr h4
+      apply h3 at h5
+      simp_all
+    have h2 := Finset.mem_toList.mpr h1
+    rewrite [h_contra] at h2
+    simp at h2
+  · rename_i head tail h_list
+    have h3 := helper_find_argmin_membership tail t.c head
+    cases h3
+    · rename_i h_case
+      have h4 : helper_find_argmin tail t.c head ∈ head :: tail := by
+        simp
+        right
+        exact h_case
+      rewrite [← h_list] at h4
+      have h5 := Finset.mem_toList.mp h4
+      simp_all
+    · rename_i h_case
+      rewrite [h_case]
+      have h4 : head ∈ {x ∈ Finset.image t.N Finset.univ | 0 < t.c x}.toList := by simp_all
+      have h5 := Finset.mem_toList.mp h4
+      simp_all
 
 
 -- A leaving variable should have the minimum positive
@@ -375,6 +503,60 @@ noncomputable def find_leaving_variable {m n : ℕ} (t : Tableau m n) (enter : F
       : Option (Fin m) :=
   let candidates := (Finset.univ).filter (fun x : Fin m => (t.b x) / (t.A x enter) > 0)
   candidates.toList.find_argmin (fun x : Fin m => (t.b x) / (t.A x enter))
+
+
+lemma piv_in_candidates {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
+      (h_leaving : find_leaving_variable t enter = some leaving) :
+  leaving ∈ (Finset.univ).filter (fun x : Fin m => (t.b x) / (t.A x enter) > 0) := by
+
+  unfold find_leaving_variable at h_leaving
+  have h1 := (List.find_argmin_preserves_membership
+      ({x | 0 < t.b x / t.A x enter} : Finset (Fin m)).toList
+      (fun x ↦ t.b x / t.A x enter)
+      leaving) h_leaving
+  simp_all
+
+
+lemma piv_positive {m n : ℕ} (t : Tableau m n)
+    (h_feasible : feasible t) (enter : Fin n) (leaving : Fin m)
+    (h_leaving : find_leaving_variable t enter = some leaving) :
+  0 < t.A leaving enter := by
+
+  have h_mem := piv_in_candidates t enter leaving h_leaving
+  simp_all
+  unfold feasible at h_feasible
+  by_contra h_contra
+  simp_all
+  have h3 := h_feasible leaving
+  have h4 := div_nonpos_of_nonneg_of_nonpos h3 h_contra
+  have h5 : ¬(t.b leaving / t.A leaving enter > 0) := by
+    apply not_lt_of_ge
+    exact h4
+  simp_all
+
+lemma leaving_ratio_positive {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
+      (h_leaving : find_leaving_variable t enter = some leaving) :
+  t.b leaving / t.A leaving enter > 0 := by
+
+  have h_mem := piv_in_candidates t enter leaving h_leaving
+  simp_all
+
+lemma leaving_min_pos_ratio {m n : ℕ} (t : Tableau m n)
+    (enter : Fin n)
+    (h_leaving : (find_leaving_variable t enter).isSome = true) :
+  ∀ i : Fin m, t.A i enter > 0 →
+  t.b ((find_leaving_variable t enter).get h_leaving)
+    / t.A ((find_leaving_variable t enter).get h_leaving) enter
+    ≤ t.b i / t.A i enter := by
+  intro i h
+  let leaving := ((find_leaving_variable t enter).get h_leaving)
+  unfold find_leaving_variable
+  simp_all
+  unfold List.find_argmin
+  unfold helper_find_argmin
+  unfold Option.get
+  simp_all
+  sorry
 
 lemma enter_is_unique {m n : ℕ} (t1 t2 : Tableau m n) :
   find_entering_variable t1 = find_entering_variable t2 →
@@ -468,6 +650,8 @@ structure pivot_arguments (m n : ℕ) where
   h_enter_in_N : t.N k = entering
   h_c_pos : t.c entering > 0
   -- h_new_basis : Function.update t.B leaving entering ∉ t.Visited_Bases
+  -- h_pivot_pos : 0 < t.A leaving entering
+  -- h_ratio : t.b leaving / t.A leaving entering > 0
 
 noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n) : Option (pivot_arguments m n) :=
   match h : (find_entering_variable t) with
@@ -476,7 +660,7 @@ noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n) : Option (pi
     have h_issome : (find_entering_variable t).isSome := by
       rewrite [h]
       apply Option.isSome_some
-    match find_leaving_variable t enter with
+    match h2 : (find_leaving_variable t enter) with
     | none => none
     | some leaving =>
         have h1 :  ∃ x, t.c x > 0 := by
@@ -490,6 +674,20 @@ noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n) : Option (pi
         have t_c_positive : t.c enter > 0 := by
           have h2 := enter_var_pos_coefficient t enter
           simp_all
+        -- have h_pivot_pos : 0 < t.A leaving enter := by
+        --   unfold find_leaving_variable at h2
+        --   simp at h2
+        --   unfold List.find_argmin at h2
+        --   by_cases match_none : ({x | 0 < t.b x / t.A x enter} : Finset (Fin m)).toList = []
+        --   · simp_all
+        --   · apply List.ne_nil_iff_exists_cons.mp at match_none
+        --     obtain ⟨head, tail, match_some⟩ := match_none
+        --     simp_all
+        --     unfold helper_find_argmin at h2
+        --   have h3 := Option.eq_some_iff_get_eq.mp h2
+
+
+        -- h_ratio : t.b leaving / t.A leaving entering > 0
         -- have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by
         --   sorry
         -- pivot_until_done
@@ -502,6 +700,100 @@ noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n) : Option (pi
           h_c_pos := t_c_positive
         }
 
+
+lemma pivot_args_some_implies_entering_some {m n : ℕ} (t : Tableau m n) :
+  (get_pivot_arguments t).isSome = true → (find_entering_variable t).isSome = true := by
+  simp [get_pivot_arguments]
+  split
+  · simp
+  · split
+    · simp
+    · simp_all
+
+noncomputable def foo {α β : Type} (b : β) (bar : β → Option β) (baz : β → α) : Option α :=
+  match h : bar b with
+  | none => none
+  | some val =>
+    some (baz val)
+
+def foo2 {α β : Type} (b : β) (bar : β → Option β) (P : Prop) (baz : P → β → α) : Option α :=
+  match h : bar b with
+  | none => none
+  | some val =>
+    have h1 : P := sorry
+    some (baz h1 val)
+
+noncomputable def foo1 {m n : ℕ} {α : Type} (a : α) (t : Tableau m n) : Option α :=
+  match h : (find_entering_variable t)  with
+  | none => none
+  | some enter =>
+    match h2 : (find_leaving_variable t enter) with
+    | none => none
+    | some leaving =>
+      have t_c_positive : t.c enter > 0 := by
+        have h2 := enter_var_pos_coefficient t enter
+        simp_all
+      some a
+
+-- match h : (find_entering_variable t) with
+--   | none => none
+--   | some enter =>
+--     have h_issome : (find_entering_variable t).isSome := by
+--       rewrite [h]
+--       apply Option.isSome_some
+--     match h2 : (find_leaving_variable t enter) with
+--     | none => none
+--     | some leaving =>
+--         have h1 :  ∃ x, t.c x > 0 := by
+--           apply Exists.intro enter
+--           simp_all
+--           apply (enter_var_pos_coefficient t enter h)
+--         have h_enter_in_N := entering_in_N t h1
+--         have N_k_is_enter : t.N (Classical.choose h_enter_in_N) = enter := by
+--           have h1 := Classical.choose_spec h_enter_in_N
+--           simp_all
+--         have t_c_positive : t.c enter > 0 := by
+--           have h2 := enter_var_pos_coefficient t enter
+--           simp_all
+
+lemma ex1 {α β : Type} (b : β) (bar : β → Option β) (baz : β → α) :
+  (foo b bar baz).isSome = true → (bar b).isSome = true := by
+  contrapose
+  intro h
+  simp_all
+  unfold foo
+  rewrite [h]
+  simp_all
+
+lemma ex3 {α β : Type} (b : β) (bar : β → Option β) (P : Prop) (baz : P → β → α) :
+  (foo2 b bar P baz).isSome = true → (bar b).isSome = true := by
+  contrapose
+  intro h
+  simp_all
+  unfold foo2
+  rewrite [h]
+  simp_all
+
+lemma ex2 {m n : ℕ} {α : Type} (a : α) (t : Tableau m n) :
+  (foo1 a t).isSome = true → (find_entering_variable t).isSome = true := by
+  contrapose
+  intro h
+  simp_all
+  unfold foo1
+  rewrite [h]
+  simp_all
+
+
+lemma pivot_args_some_implies_leaving_some {m n : ℕ} (t : Tableau m n) (enter : Fin n) :
+  (get_pivot_arguments t).isSome = true → (find_leaving_variable t enter).isSome = true := by
+  intro h
+  have entering_isSome := pivot_args_some_implies_entering_some t h
+  unfold get_pivot_arguments at h
+  simp_all
+  apply Option.isSome_iff_exists.mpr
+  apply Option.isSome_iff_exists.mp at h
+  obtain ⟨args, h_args⟩ := h
+  sorry
 
 noncomputable def pivot2 {m n : ℕ} (args : pivot_arguments m n)
   : Tableau m n :=
@@ -550,32 +842,113 @@ inductive PivotedFrom (m n : ℕ) :
       PivotedFrom m n t₂ t₃ →
       PivotedFrom m n t₁ t₃
 
-lemma pivot2_improves_objective {m n : ℕ} (args : pivot_arguments m n) :
+lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n)
+  (args : pivot_arguments m n) (h : get_pivot_arguments t = some args) :
+    t = args.t := by
+
+  unfold get_pivot_arguments at h
+  simp_all
+  sorry
+
+lemma pivot2_improves_objective {m n : ℕ} (t : Tableau m n) (h_feasible : feasible t)
+    (args : pivot_arguments m n) (h_args : get_pivot_arguments t = some args) :
     (pivot2 args).v > args.t.v := by
   unfold pivot2
   simp_all
   have h_enter_in_N := args.h_enter_in_N
   have h_c_pos := args.h_c_pos
-  have h_pivot_pos : 0 < args.t.A args.leaving args.entering := by
-
+  have args_feasible : feasible args.t := by
+    rewrite [get_piv_arguments_unchanged_t t args h_args] at h_feasible
+    exact h_feasible
+  have h_args2 : (get_pivot_arguments t).isSome = true := by
+    simp_all
+  have h_leaving_isSome := pivot_args_some_implies_leaving_some t args.entering h_args2
+  have h_leave : find_leaving_variable args.t args.entering = some args.leaving := by
+    simp_all
+    unfold get_pivot_arguments at h_args
+    simp_all
+    sorry
+  have h_pivot_pos := piv_positive args.t args_feasible args.entering args.leaving h_leave
   have h_ratio : args.t.b args.leaving / args.t.A args.leaving args.entering > 0 := by sorry
   simp_all
 
+lemma pivot2_preserves_feasibility (m n : ℕ) (t : Tableau m n)
+  (h_feasible : feasible t) (h : (get_pivot_arguments t).isSome = true) :
+    feasible (pivot2 ((get_pivot_arguments t).get h)) := by
+
+  unfold feasible at *
+  intro i
+  apply Option.isSome_iff_exists.mp at h
+  rename_i h2
+  obtain ⟨args, h⟩ := h
+  simp_all
+  unfold pivot2
+  simp
+  by_cases h_cases : i = args.leaving
+  · simp [h_cases]
+    apply div_nonneg_iff.mpr
+    left
+    constructor
+    · have h3 := h_feasible args.leaving
+      have h4 := get_piv_arguments_unchanged_t t args h
+      simp_all
+    · have h1 := pivot_args_some_implies_entering_some t h2
+      have h3 := pivot_args_some_implies_leaving_some t args.entering h2
+      unfold get_pivot_arguments at h
+      have h4 := piv_positive t h_feasible args.entering args.leaving
+      simp_all
+      sorry
+  · simp [h_cases]
+    have h3 := pivot_args_some_implies_leaving_some t args.entering h2
+    have h_ratio := leaving_min_pos_ratio t args.entering h3
+    by_cases hA_positive : t.A i args.entering > 0
+    · simp_all
+      have h_ratio2 := h_ratio i hA_positive
+      have h_same_t := get_piv_arguments_unchanged_t t args h
+      have h4 : (t.b ((find_leaving_variable t args.entering).get h3) /
+        t.A ((find_leaving_variable t args.entering).get h3) args.entering)
+        * t.A i args.entering ≤ t.b i := sorry
+          -- le_div_iff_mul_le.mp h_ratio2
+      simp_all
+      have h_args_eq : ((find_leaving_variable t args.entering).get h3) = args.leaving := by
+        sorry
 
 
-theorem pivoted_from_increases_v {m n}
-  (pivot_strict_increase : ∀ (args : pivot_arguments m n), (pivot2 args).v > args.t.v) :
-  ∀ {t1 t2 : Tableau m n}, PivotedFrom m n t1 t2 → (t2.v > t1.v) := by
-  intros t1 t2 h
+
+
+
+
+
+lemma pivot2_preserves_feasibility (m n : ℕ) (t1 t2 : Tableau m n)
+    (h_feasible : feasible t1) (h_pivoted : PivotedFrom m n t1 t2) :
+      feasible t2 := by
+    induction h_pivoted with
+    | step args h_get h_eq =>
+
+
+
+theorem pivoted_from_increases_v {m n : ℕ} (t1 t2 : Tableau m n) (h1_feasible : feasible t1) (h2_feasible : feasible t2) :
+    PivotedFrom m n t1 t2 → (t2.v > t1.v) := by
+  intro h
   induction h with
   | step args h_get h_eq =>
     -- in the `step` case t2 = pivot2 args
     subst h_eq
     rename_i t
-    have h_pivot_increases := pivot_inc
-    exact pivot_strict_increase args
+    have h_get2 : (get_pivot_arguments t).isSome = true := by
+      simp_all
+    have h_pivot_increases := pivot2_improves_objective t h1_feasible ((get_pivot_arguments t).get h_get2)
+    simp_all
+    have h_args_t : args.t = t := by
+      unfold get_pivot_arguments at h_get
+      simp_all
+      sorry
+    simp_all
   | trans h12 ih12 h23 ih23 =>
+    rename_i t3 t4 t5
     -- compose the strict inequalities from the two parts
+    simp_all
+
     exact lt_trans (ih12) (ih23)
 
 
@@ -641,8 +1014,9 @@ theorem pivot_preserves_feasibility {m n : ℕ} (t : Tableau m n)
   (h_pivot_pos : 0 < t.A r enter)
   (h_feasible : feasible t)
   (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
-  (h_tc_negative : t.c enter < 0)
-  : feasible (pivot t enter r k h_enter_in_N h_tc_negative) :=
+  (h_c_pos : t.c enter > 0)
+  (h_newBase: Function.update t.B r enter ∉ t.Visited_Bases)
+  : feasible (pivot t enter r k h_enter_in_N h_c_pos h_newBase) :=
 by
   intro i
   let t' := pivot t enter r k h_enter_in_N
@@ -749,11 +1123,12 @@ lemma pivot_preserves_zeros_cardinality {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
   (k : Fin (n - m)) (h_enter_in_N : t.N k = enter)
   (h_wf : WellFormed t)
-  (h_tc_enter_neg : t.c enter < 0)
+  (h_tc_enter_neg : t.c enter > 0)
+  (h_newBase : Function.update t.B r enter ∉ t.Visited_Bases)
   (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b leaving / t.A leaving enter ≤ t.b i / t.A i enter)
    :
     ∀x, x ∈ (zeros t.c) →
-        x ∈ (zeros (pivot t enter leaving k h_enter_in_N h_tc_enter_neg).c)
+        x ∈ (zeros (pivot t enter leaving k h_enter_in_N h_tc_enter_neg h_newBase).c)
       ∨ x == enter := by
 
     intros x h
@@ -771,11 +1146,12 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n) (enter : Fin n) (r : Fin m)
   (k : Fin (n - m)) (h_enter_in_N : t.N k = enter)
   (h_wf : WellFormed t)
-  (h_tc_enter_neg : t.c enter < 0)
-  : WellFormed (pivot t enter r k h_enter_in_N h_tc_enter_neg) := by
+  (h_c_pos : t.c enter > 0)
+  (h_newBase : Function.update t.B r enter ∉ t.Visited_Bases)
+  : WellFormed (pivot t enter r k h_enter_in_N h_c_pos h_newBase) := by
   -- unfold WellFormed at *
   -- obtain ⟨h1, h2, h3, h4⟩ := h_wf
-  let t' := (pivot t enter r k h_enter_in_N h_tc_enter_neg)
+  let t' := (pivot t enter r k h_enter_in_N h_c_pos h_newBase)
   constructor
   · -- WTS B' is Injective
     unfold pivot
@@ -932,18 +1308,15 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
               symm
               exact h4
         · unfold WellFormed at h_wf
-          unfold pivot
-          obtain ⟨h1, h2, h3, h4, h5, h6⟩ := h_wf
           simp_all
-          constructor
-          · intro x
-            constructor
-            · intro hyp
-              unfold Function.update
-
-
-
-
+          -- obtain ⟨_,_,_,_,_,_,h1⟩ := h_wf
+          -- obtain ⟨h1, h2, h3, h4, h5, h6⟩ := h_wf
+          -- simp_all
+          -- constructor
+          -- · intro x
+          --   constructor
+          --   · intro hyp
+          --     unfold Function.update
 
 lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
   (enter : Fin n) (r : Fin m) (k : Fin (n - m))
@@ -951,7 +1324,9 @@ lemma pivot_improves_objective {m n : ℕ} (t : Tableau m n)
   (h_pivot_pos : 0 < t.A r enter)
   (h_ratio : t.b r / t.A r enter > 0)
   (h_c_pos : t.c enter > 0)
-  : (pivot t enter r k h_enter_in_N h_c_pos).v > t.v := by
+  (h_newBase : Function.update t.B r enter ∉ t.Visited_Bases)
+  : (pivot t enter r k h_enter_in_N h_c_pos h_newBase).v > t.v := by
 
   unfold pivot at *
+  simp
   simp_all
