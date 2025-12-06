@@ -35,6 +35,18 @@ structure generic_LP (m n : ℕ) where
   (x : Fin n → ℝ)
   (c : Fin n → ℝ)
 
+
+def my_sum_helper (index : ℕ) (f : ℕ → ℝ) : ℝ :=
+  match index with
+  | .zero => 0
+  | .succ n => f index + my_sum_helper n f
+
+def my_sum {n : ℕ} (index : ℕ) (f : (Fin n) → ℝ) :=
+  my_sum_helper index (fun x => if h : x < n then
+    let i : Fin n := ⟨x, h⟩
+    f i
+  else 0)
+
 -- max ∑ᵢ cᵢ xᵢ
 -- s.t. ∑ᵢ Aⱼᵢxᵢ ≤ bⱼ, ∀j
 -- xᵢ ≥ 0, ∀i
@@ -44,22 +56,14 @@ structure standard_LP (m n : ℕ) where
   (c : Fin n → ℝ)
 
 def solution_is_feasible_standard_LP {m n : ℕ} (lp : standard_LP m n) (x : Fin n → ℝ) : Prop :=
-  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) ≤ lp.b j) ∧
+  -- (∀ (j : Fin m), ∑ i, (lp.A j i * x i) ≤ lp.b j) ∧
+  (∀ (j : Fin m), my_sum n (fun i => lp.A j i * x i) ≤ lp.b j) ∧
   ∀ (i : Fin n), x i ≥ 0
 
-def my_sum_helper (index : ℕ) (f : ℕ → ℝ) : ℝ :=
-  match index with
-  | .zero => 0
-  | .succ n => f index + my_sum_helper n f
-
-def my_sum {n : ℕ} (index : (Fin n)) (f : (Fin n) → ℝ) :=
-  my_sum_helper (index.toNat) (fun x => if h : x < n then
-    let i : Fin n := ⟨x, h⟩
-    f i
-  else 0)
 
 def get_objective_value_standard_LP {m n : ℕ} (lp : standard_LP m n) (solution : Fin n → ℝ) : ℝ :=
-  ∑ i, ((lp.c i) * (solution i))
+  -- ∑ i, ((lp.c i) * (solution i))
+  my_sum n (fun i => ((lp.c i) * (solution i)))
 
 -- def make_standard {m n : ℕ} (lp : generic_LP m n) : LP m n :=
 --   let c := match lp.obj with
@@ -76,11 +80,14 @@ structure LP (m n : ℕ) where
   (c : Fin n → ℝ)
 
 def solution_is_feasible_LP {m n : ℕ} (lp : LP m n) (x : Fin n → ℝ) : Prop :=
-  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) = lp.b j) ∧
+  -- (∀ (j : Fin m), ∑ i, (lp.A j i * x i) = lp.b j) ∧
+  (∀ (j : Fin m), my_sum n (fun i => (lp.A j i * x i)) = lp.b j) ∧
   ∀ (i : Fin n), x i ≥ 0
 
 def get_objective_value_LP {m n : ℕ} (lp : LP m n) (solution : Fin n → ℝ) : ℝ :=
-  ∑ i, ((lp.c i) * (solution i))
+  -- ∑ i, ((lp.c i) * (solution i))
+  my_sum n (fun i => ((lp.c i) * (solution i)))
+
 
 def add_slack_variables {m n : ℕ} (lp : standard_LP m n) : LP m (n + m) :=
   let c := fun i : Fin (n + m) => if h : i.val < n then lp.c (Fin.castLT i h) else 0
@@ -104,6 +111,39 @@ lemma le_imp_exists_add_real {a b : ℝ} : a ≤ b → ∃ (c : ℝ), a + c = b 
 --     | zero =>
 --       simp_all
 --       unfold Finset.sum
+
+lemma sum_f_eq_sum_g {m n : ℕ}
+    (f : Fin (n + m) → ℝ)
+    (g : Fin n → ℝ)
+    (h1 : ∀ (i : Fin (n + m)) (h : i < n), f i = g (Fin.castLT i h))
+    (h2 : ∀ (i : Fin (n + m)), n ≤ i → f i = 0) :
+    my_sum (n+m) f = my_sum n g := by
+    unfold my_sum
+    unfold my_sum_helper
+    induction n with
+    | zero =>
+      simp_all
+      induction m with
+      | zero => simp_all
+      | succ =>
+        simp_all
+        unfold my_sum_helper
+        simp_all
+    | succ num1 IH1 =>
+        simp_all
+        have h3 : num1 + 1 + m = Nat.succ (num1 + m) := by
+          simp
+          grind
+        simp [h3]
+        induction m with
+        | zero =>
+          simp
+          unfold my_sum_helper
+          sorry
+        | succ num2 IH2 =>
+          simp_all
+          sorry
+
 
 
 -- lemma sum_f_eq_sum_g {m n : ℕ}
@@ -190,9 +230,16 @@ theorem adding_slack_equivalent_LP {m n : ℕ} : ∀ (lp : standard_LP m n) (v :
         obtain ⟨h1,h2⟩ := h_feasible
         have h3 := h1 j
         apply le_imp_exists_add_real at h3
-        obtain ⟨c,h3⟩ := h3
+        obtain ⟨a,h3⟩ := h3
         rewrite [← h3]
-        apply Finset.sum_eq_
+        have h5 := sum_f_eq_sum_g
+          (fun i ↦ if h : ↑i < n then lp.A j (i.castLT h) * c i else c i)
+          (fun i ↦ lp.A j i * x i)
+
+        unfold my_sum at *
+
+        simp_all
+
 
 
 
@@ -201,6 +248,7 @@ theorem adding_slack_equivalent_LP {m n : ℕ} : ∀ (lp : standard_LP m n) (v :
     obtain ⟨y, h_feasible, h_v⟩ := h
     unfold solution_is_feasible_LP at h_feasible
     obtain ⟨h1,h2⟩ := h_feasible
+    sorry
 
 
 
@@ -792,8 +840,6 @@ lemma enter_is_unique {m n : ℕ} (t1 t2 : Tableau m n) :
 
   intro h
 
--- lemma basis_determines_v {m n : ℕ} (t1 t2 : Tableau m n) :
---     (pivot t1).v >
 
 def all_bases (m n : ℕ) : Finset (Fin m → Fin n) := Finset.univ
 
@@ -1260,6 +1306,24 @@ theorem pivoted_from_increases_v {m n : ℕ}
     have h_t4_feasible := pivoted_from_preserves_feasibility t3 t4 h1_feasible h12
     simp_all
     exact lt_trans (h23) (ih23)
+
+lemma pivoted_from_previous_bases {m n : ℕ} (t1 : Tableau m n) (B : Fin m → Fin n) :
+  B ∈ t1.Visited_Bases → ∃t2, PivotedFrom m n t1 t2 ∧ t2.B = B := by
+  intro h
+
+lemma basis_determines_v {m n : ℕ} (t1 t2 : Tableau m n) :
+    PivotedFrom m n t1 t2 → t2.B ∉ t1.Visited_Bases := by
+    intro h
+    induction h with
+    | step args h_wf h_get h_eq =>
+      rename_i t3 t4
+      -- unfold get_pivot_arguments at h_get
+      unfold pivot2 at h_eq
+      rewrite [h_eq]
+      simp
+
+
+
 
 
 noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
