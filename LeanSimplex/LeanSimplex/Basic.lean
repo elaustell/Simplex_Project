@@ -320,6 +320,7 @@ structure Tableau (m n : ℕ) where
   (B : Fin m → Fin n) -- basic variables
   (N : Fin (n-m) → Fin n) -- non-basic variables
   (Visited_Bases : Finset (Fin m → Fin n))
+  (Original_LP : LP m n)
 
 def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
   fun j =>
@@ -372,8 +373,7 @@ noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
   fun j => (nonzeros lp.c).toList.get (Fin.cast h2 j)
 
 noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
-  ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf, {make_B lp h_wf}⟩
-
+  ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf, {make_B lp h_wf}, lp⟩
 
 lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
     l.get i = l.get j ↔ i = j := by
@@ -530,7 +530,7 @@ noncomputable def pivot {m n : ℕ}
   let B' := Function.update t.B r enter
   let N' := Function.update t.N k oldB
   let Visited_Bases' := t.Visited_Bases.cons B' new_basis
-  ⟨A', b', c', v', B', N', Visited_Bases'⟩
+  ⟨A', b', c', v', B', N', Visited_Bases', t.Original_LP⟩
 
 -- lemma pivot_preserves_v {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
 --   (enter : Fin n) (r : Fin m) (k : Fin (n - m))
@@ -990,7 +990,7 @@ noncomputable def pivot2 {m n : ℕ} (args : pivot_arguments m n)
   let N' := Function.update t.N k oldB
   -- let Visited_Bases' := t.Visited_Bases.cons B' new_basis
   let Visited_Bases' := t.Visited_Bases ∪ {B'}
-  ⟨A', b', c', v', B', N', Visited_Bases'⟩
+  ⟨A', b', c', v', B', N', Visited_Bases', t.Original_LP⟩
 
 
 
@@ -1038,6 +1038,16 @@ lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n) (h_wf : WellFo
     · simp_all
       rewrite [← h]
       simp_all
+
+lemma pivot2_unchanged_og_lp {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
+  (args : pivot_arguments m n) (h : get_pivot_arguments t h_wf = some args) :
+    t.Original_LP = (pivot2 args).Original_LP := by
+
+  unfold pivot2
+  simp_all
+  rewrite [get_piv_arguments_unchanged_t t h_wf args h]
+  simp
+
 
 lemma pivot2_improves_objective {m n : ℕ} (t : Tableau m n) (h_feasible : feasible t)
     (h_wf : WellFormed t) (args : pivot_arguments m n)
@@ -1307,9 +1317,9 @@ theorem pivoted_from_increases_v {m n : ℕ}
     simp_all
     exact lt_trans (h23) (ih23)
 
-lemma pivoted_from_previous_bases {m n : ℕ} (t1 : Tableau m n) (B : Fin m → Fin n) :
-  B ∈ t1.Visited_Bases → ∃t2, PivotedFrom m n t1 t2 ∧ t2.B = B := by
-  intro h
+-- lemma pivoted_from_previous_bases {m n : ℕ} (t1 : Tableau m n) (B : Fin m → Fin n) :
+--   B ∈ t1.Visited_Bases → ∃t2, PivotedFrom m n t1 t2 ∧ t2.B = B := by
+--   intro h
 
 lemma basis_determines_v {m n : ℕ} (t1 t2 : Tableau m n) :
     PivotedFrom m n t1 t2 → t2.B ∉ t1.Visited_Bases := by
@@ -1321,14 +1331,6 @@ lemma basis_determines_v {m n : ℕ} (t1 t2 : Tableau m n) :
       unfold pivot2 at h_eq
       rewrite [h_eq]
       simp
-
-
-
-
-
-noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
-  let t := make_tableau lp h_wflp
-
 
 lemma le_mul : ∀ (a b c : ℝ), 0 < c → a ≤ b → c*a ≤ c*b := by
   intros a b c h1 h2
@@ -1660,10 +1662,99 @@ theorem pivot_improves_objective {m n : ℕ} (t : Tableau m n)
   unfold pivot at *
   simp_all
 
--- lemma pivoted_from_new_base :
+lemma pivoted_from_one_step {m n : ℕ} (t : Tableau m n)
+    (h_wf : WellFormed t) (args : pivot_arguments m n)
+    (h_args : get_pivot_arguments t h_wf = some args) :
+    PivotedFrom m n t (pivot2 args) := by
+
+    apply PivotedFrom.step args h_wf h_args
+    simp
+
+
+lemma pivoted_from_implies_pivot {m n : ℕ} (t1 t2 : Tableau m n) --(h_feasible : feasible t)
+    (h_wf : WellFormed t1) (args : pivot_arguments m n)
+    (h_args : get_pivot_arguments t1 h_wf = some args) :
+    PivotedFrom m n t2 t1 → PivotedFrom m n t2 (pivot2 args) := by
+
+    intro h
+    have h0 := pivoted_from_one_step t1 h_wf args h_args
+    apply PivotedFrom.trans h h0
+
+def Visited_Bases_Invariant {m n : ℕ}
+    (t1 : Tableau m n) (h_wf : WellFormed_LP t1.Original_LP) : Prop :=
+  ∀B, B ∈ t1.Visited_Bases → (B = make_B t1.Original_LP h_wf ∨
+  ∃t2, (PivotedFrom m n t1 t2 ∧ t2.B = B))
+
+lemma contrapositive_vb {m n : ℕ} (t1 : Tableau m n) (h_wf : WellFormed_LP t1.Original_LP)
+  (h_vb : Visited_Bases_Invariant t1 h_wf) :
+  ∀B, (∃t2, (¬(PivotedFrom m n t1 t2 ∧ t2.B = B)
+  ∧ ¬(B = make_B t1.Original_LP h_wf)) → B ∉ t1.Visited_Bases) := by
+  intro B
+  unfold Visited_Bases_Invariant at h_vb
+  contrapose h_vb
+  simp at h_vb
+  simp
+  apply Exists.intro B
+  constructor
+  · specialize h_vb t1
+    simp_all
+  · constructor
+    · specialize h_vb t1
+      simp_all
+    · intro t3 h
+      specialize h_vb t3
+      simp_all
+
+def pivot2_preserves_vb_invariant {m n : ℕ} (t : Tableau m n) --(h_feasible : feasible t)
+    (h_wf : WellFormed t) (args : pivot_arguments m n)
+    (h_args : get_pivot_arguments t h_wf = some args)
+    (h_wflp : WellFormed_LP args.t.Original_LP)
+    (h_wflp2 : WellFormed_LP (pivot2 args).Original_LP):
+    Visited_Bases_Invariant args.t h_wflp → Visited_Bases_Invariant (pivot2 args) h_wflp2  := by
+
+    intro h
+    unfold Visited_Bases_Invariant at *
+    intro B
+    have h_v := h B
+    intro h2
+    unfold pivot2 at h2
+    simp_all
+    cases h2
+    · simp_all
+      sorry
+    · specialize h B
+      simp_all
+      cases h
+      · -- Case original B
+        left
+        have h1 := pivot2_unchanged_og_lp t h_wf args h_args
+        have h2 := get_piv_arguments_unchanged_t t h_wf args h_args
+        rename_i h3 h4
+        rewrite [h4]
+        unfold make_B
+        simp_all
+      · -- Case B was from a previous pivot
+        rename_i h3 h4
+        obtain ⟨t2, h4, h5⟩ := h4
+        right
+        apply Exists.intro t2
+        constructor
+        · have h6 := pivoted_from_implies_pivot 
+
+
+
+
+
+
+
+
+
+
 
 noncomputable def pivot_until_done {m n : ℕ}
-  (t : Tableau m n) (h_wf : WellFormed t) : Tableau m n :=
+  (t : Tableau m n) (h_wf : WellFormed t)
+  -- (h_vb : Visited_Bases_Invariant t)
+  : Tableau m n :=
   match h : (find_entering_variable t) with
   | none => t
   | some enter =>
@@ -1685,6 +1776,9 @@ noncomputable def pivot_until_done {m n : ℕ}
           have h2 := enter_var_pos_coefficient t enter
           simp_all
         have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by
+          -- unfold Visited_Bases_Invariant at h_vb
+          -- have h_vb2 := contrapositive_vb t h_vb (Function.update t.B leaving enter)
+          -- obtain ⟨t2, h_vb2⟩ := h_vb2
 
           sorry
         pivot_until_done
@@ -1696,3 +1790,20 @@ termination_by decreasing_measure t
 decreasing_by
   unfold decreasing_measure
   apply pivot_decreases_measure
+
+
+noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
+  let t := make_tableau lp h_wflp
+  let h_wf := wf_lp_to_tableau lp h_wflp
+  let h_vb : Visited_Bases_Invariant (make_tableau lp h_wflp) h_wflp := by
+    unfold Visited_Bases_Invariant
+    intro B
+    intro h
+    left
+    unfold make_tableau at h
+    simp at h
+    unfold make_tableau at *
+    simp_all
+
+
+  -- let final_tableau := pivot_until_done t h_wf
