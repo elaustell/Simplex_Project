@@ -273,17 +273,17 @@ def List.helper_min {n : ℕ} (l : List (Fin n)) (current_min : (Fin n)) : Fin n
       else tail.helper_min head
 
 /-- Returns the minimum element of `l`, or `none` if `l` is empty. -/
-def List.min {n : ℕ} (l : List (Fin n)) : Option (Fin n):=
+def List.get_min {n : ℕ} (l : List (Fin n)) : Option (Fin n):=
   match l with
   | [] => none
   | head :: tail => some (tail.helper_min head)
 
 --- The following lemmas will help us verify correctness of `find_entering_variable`---
 
-/-- The function `l.min` returns `none` if and only if `l` is empty. -/
+/-- The function `l.get_min` returns `none` if and only if `l` is empty. -/
 @[simp]
-lemma List.min_none_iff {n : ℕ} (l : List (Fin n)) : l.min = none ↔ l = [] := by
-  unfold List.min
+lemma List.min_none_iff {n : ℕ} (l : List (Fin n)) : l.get_min = none ↔ l = [] := by
+  unfold List.get_min
   constructor
   · intro h
     split at h
@@ -314,18 +314,18 @@ lemma List.helper_min_mem {n : ℕ} (l : List (Fin n)) :
       · simp_all
       · simp_all
 
-/-- If the function `l.min` returns something, it must be a member of `l`. -/
+/-- If the function `l.get_min` returns something, it must be a member of `l`. -/
 @[simp]
 lemma List.min_some_membership {n : ℕ} (l : List (Fin n)) (a : Fin n) :
-  l.min = some a → a ∈ l := by
+  l.get_min = some a → a ∈ l := by
   intro h
   induction l with
   | nil =>
-    unfold List.min at h
+    unfold List.get_min at h
     simp_all
   | cons head tail IH =>
     simp_all
-    unfold List.min at h
+    unfold List.get_min at h
     simp at h
     have h_helper := List.helper_min_mem tail head
     simp_all
@@ -337,7 +337,7 @@ lemma List.min_some_membership {n : ℕ} (l : List (Fin n)) (a : Fin n) :
 -/
 noncomputable def find_entering_variable {m n : ℕ} (t : Tableau m n)
   : Option (Fin n) :=
-  ((Finset.univ.image t.N).filter (fun x => t.c x > 0)).toList.min
+  ((Finset.univ.image t.N).filter (fun x => t.c x > 0)).toList.get_min
 
 /-- When finding a leaving variable, we only want to consider
     variables in B with a positive ratio. Since each constraint
@@ -402,7 +402,7 @@ lemma entering_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) :
   intro h
   unfold find_entering_variable
   simp_all
-  unfold List.min
+  unfold List.get_min
   obtain ⟨x,h⟩ := h
   unfold WellFormed at h_wf
   obtain ⟨_,_,_,_,_,h2⟩ := h_wf
@@ -924,7 +924,7 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
                   unfold find_leaving_variable at h_leaving2
                   unfold find_leaving_helper at *
                   simp_all
-                  unfold List.min at h_enter2
+                  unfold List.get_min at h_enter2
                   simp at h_enter2
                   split at h_enter2
                   · simp_all
