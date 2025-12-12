@@ -12,7 +12,7 @@ inductive CmpOp
   | geq
 
 /-- A constraint in a linear program is of the form
-    ∑ᵢ Aᵢxᵢ ⋈ b
+      ∑ᵢ Aᵢxᵢ ⋈ b
     where ⋈ ∈ {≤,=,≥}
 -/
 structure constraint (n : ℕ) where
@@ -20,6 +20,7 @@ structure constraint (n : ℕ) where
   (b : ℝ)
   (ops : CmpOp)
 
+/-- An LP's objective is either `min` or `max` some linear combination of constraints. -/
 inductive objective
   | max
   | min
@@ -52,11 +53,6 @@ structure LP (m n : ℕ) where
   (A : Matrix (Fin m) (Fin n) ℝ)
   (b : Fin m → ℝ)
   (c : Fin n → ℝ)
-
-def CmpOp.is_eq (op : CmpOp) : Bool :=
-  match op with
-    | .eq => true
-    | _ => false
 
 /-- Returns the set of all inputs to the function `f` that return 0 -/
 noncomputable def zeros {n : Type} [Fintype n] (f : n → ℝ) : Finset n :=
@@ -101,7 +97,8 @@ def WellFormed {m n : ℕ} (t : Tableau m n) : Prop :=
 def Feasible {m n : ℕ} (t : Tableau m n) : Prop :=
   ∀ i, t.b i ≥ 0
 
-/-- Creates a list of variables that
+/-- Given a well-formed LP with all equality constraints, identifies the basic variables
+    according to which variables have coefficient zero in the objective function.
 -/
 noncomputable def make_B {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Fin m → Fin n :=
   have h : (zeros lp.c).toList.length = m := by
@@ -111,6 +108,9 @@ noncomputable def make_B {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
     simp_all
   fun j => (zeros lp.c).toList.get (Fin.cast h2 j)
 
+/-- Given a well-formed LP with all equality constraints, identifies the nonbasic variables
+    according to which variables are nonzero in the objective function.
+-/
 noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Fin (n-m) → Fin n :=
   have h : (nonzeros lp.c).toList.length = (n-m) := by
     unfold WellFormed_LP at h_wf
@@ -119,6 +119,7 @@ noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
     simp_all
   fun j => (nonzeros lp.c).toList.get (Fin.cast h2 j)
 
+/-- Given a well-formed LP with all equality constraints, constructs the equivalent Tableau. -/
 noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
   ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf, {make_B lp h_wf}⟩
 
@@ -129,11 +130,16 @@ noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP l
   For several of these lemmas I write a version with explicit inputs in order to
   simplify the proof. -/
 
+/-- A version of Lean's standard library lemma `List.Nodup.get_inj_iff` that makes arguments
+    explicit rather than implicit. This helps Lean not to get stuck on the metavariables,
+    which kept happening in the proofs.
+-/
 lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
     l.get i = l.get j ↔ i = j := by
     apply List.Nodup.get_inj_iff
     simp_all
 
+/-- If `l` has no duplicates, then l[a1] = l[a2] implies a1 = a2. -/
 lemma nodup_inj {α : Type} {n : ℕ} (l : List α)
   (h : n = l.length)
   (a1 a2 : Fin n)
@@ -146,11 +152,18 @@ by
   obtain ⟨h4, h5⟩ := h3
   simp_all
 
+/-- A version of Lean's standard library lemma `List.mem_iff_get` that makes arguments
+    explicit rather than implicit. This helps Lean not to get stuck on the metavariables,
+    which kept happening in the proofs.
+-/
 lemma list_mem_explicit {α : Type} (l : List α) (a : α) : a ∈ l ↔ ∃ n, l.get n = a := by
   apply List.mem_iff_get
 
 ----------------------------------------------------------------------------------------
 
+/-- Given a well-formed LP with all equality constraints, the function `make_tableau`
+    produces a Tableau that is well-formed.
+-/
 theorem wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
   WellFormed (make_tableau lp h_wf) := by
   unfold WellFormed
@@ -248,6 +261,9 @@ theorem wf_lp_to_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) :
             apply List.mem_of_getElem at hy
             simp_all
 
+/-- Iterates through `l` and compares each element with the `current_min`,
+    keeping the smallest element.
+-/
 def List.helper_min {n : ℕ} (l : List (Fin n)) (current_min : (Fin n)) : Fin n :=
   match l with
   | [] => current_min
@@ -256,12 +272,15 @@ def List.helper_min {n : ℕ} (l : List (Fin n)) (current_min : (Fin n)) : Fin n
       then tail.helper_min current_min
       else tail.helper_min head
 
+/-- Returns the minimum element of `l`, or `none` if `l` is empty. -/
 def List.min {n : ℕ} (l : List (Fin n)) : Option (Fin n):=
   match l with
   | [] => none
   | head :: tail => some (tail.helper_min head)
 
 --- The following lemmas will help us verify correctness of `find_entering_variable`---
+
+/-- The function `l.min` returns `none` if and only if `l` is empty. -/
 @[simp]
 lemma List.min_none_iff {n : ℕ} (l : List (Fin n)) : l.min = none ↔ l = [] := by
   unfold List.min
@@ -273,6 +292,7 @@ lemma List.min_none_iff {n : ℕ} (l : List (Fin n)) : l.min = none ↔ l = [] :
   · intro h
     simp_all
 
+/-- The function `l.helper_min` either returns the current minimum or a member of `l`. -/
 lemma List.helper_min_mem {n : ℕ} (l : List (Fin n)) :
   ∀(current_min : (Fin n)),
   l.helper_min current_min = current_min ∨ l.helper_min current_min ∈ l := by
@@ -294,6 +314,7 @@ lemma List.helper_min_mem {n : ℕ} (l : List (Fin n)) :
       · simp_all
       · simp_all
 
+/-- If the function `l.min` returns something, it must be a member of `l`. -/
 @[simp]
 lemma List.min_some_membership {n : ℕ} (l : List (Fin n)) (a : Fin n) :
   l.min = some a → a ∈ l := by
@@ -361,6 +382,7 @@ structure pivot_arguments (m n : ℕ) where
   k : Fin (n - m)
   h_enter_in_N : t.N k = entering
   h_c_pos : t.c entering > 0
+  new_basis : Function.update t.B leaving entering ∉ t.Visited_Bases
 
 /-- Verifies that if `find_entering_variable` returns an entering variable,
     then that variable must have positive coefficient in the objective function
@@ -441,6 +463,8 @@ noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n)
         have t_c_positive : t.c enter > 0 := by
           have h2 := enter_var_pos_coefficient t enter
           simp_all
+        have h_new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by
+          sorry
 
         some {
           t := t
@@ -449,6 +473,7 @@ noncomputable def get_pivot_arguments {m n : ℕ} (t : Tableau m n)
           k := (Classical.choose h_enter_in_N)
           h_enter_in_N := N_k_is_enter
           h_c_pos := t_c_positive
+          new_basis := h_new_base
         }
 
 /-- Brings `args.leaving` out of the basis and replaces it with `args.entering`. -/
@@ -466,16 +491,17 @@ noncomputable def pivot {m n : ℕ} (args : pivot_arguments m n)
   let A' := fun i j => if i = l then t.A l j / piv else t.A i j - (t.A i e / piv) * t.A l j
   let b' := fun i => if i = l then t.b i / piv else t.b i - (t.A i e / piv) * t.b l
   let c' := fun j => t.c j - (t.c e / piv) * t.A l j
+
   let v' := t.v + (t.c e / piv) * t.b l
   let B' := Function.update t.B l e
   let N' := Function.update t.N k oldB
-  let new_basis : B' ∉ t.Visited_Bases := by
-    sorry
-  let Visited_Bases' := t.Visited_Bases.cons B' new_basis
+  let Visited_Bases' := t.Visited_Bases.cons B' args.new_basis
 
   ⟨A', b', c', v', B', N', Visited_Bases'⟩
 
------- The following lemmas will be used to prove the correcness of `pivot` -----------
+-------- The following lemmas will be used to prove the correctness of `pivot` -----------
+
+/-- If `x` is a nonbasic variable, then it cannot be a basic variable. -/
 lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
                       (x : Fin n) (k : Fin (n - m)) :
   (t.N k = x) → (∀ (y : Fin m), t.B y ≠ x) := by
@@ -498,6 +524,7 @@ lemma x_in_N_implies_x_not_in_B {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   apply h_dis at h1
   simp_all
 
+/-- If `x` is not a basic variable, it must be a nonbasic variable. -/
 lemma x_not_in_B_implies_x_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) (x : Fin n) :
   (¬∃ (y : Fin m), t.B y = x) → (∃p, t.N p = x) := by
   intro h
@@ -512,6 +539,7 @@ lemma x_not_in_B_implies_x_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   simp [h_cont] at contra
   simp_all
 
+/-- If `get_pivot_args` returns `some`, then `t` must have an entering variable. -/
 lemma pivot_args_some_implies_entering_some {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) :
   (get_pivot_arguments t h_wf).isSome = true → (find_entering_variable t).isSome = true := by
   simp [get_pivot_arguments]
@@ -521,6 +549,7 @@ lemma pivot_args_some_implies_entering_some {m n : ℕ} (t : Tableau m n) (h_wf 
     · simp
     · simp_all
 
+/-- If `get_pivot_args` returns `some`, then `t` must have a leaving variable. -/
 lemma pivot_args_some_implies_leaving_some {m n : ℕ}
   (t : Tableau m n) (h_wf : WellFormed t) (enter : Fin n)
   (h : (get_pivot_arguments t h_wf).isSome = true)
@@ -539,6 +568,10 @@ lemma pivot_args_some_implies_leaving_some {m n : ℕ}
     · rename_i enter2 h4 leaving2 h5
       simp_all
 
+/-- The tableau in the structure returned by `get_pivot_arguments` with input `t`
+    is itself (`t`). This helps with rewrites where we have a hypothesis that refers to
+    `args.t` but a goal that refers to `t`, or vice versa.
+-/
 lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
   (args : pivot_arguments m n) (h : get_pivot_arguments t h_wf = some args) :
     t = args.t := by
@@ -560,6 +593,7 @@ lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n) (h_wf : WellFo
       rewrite [← h]
       simp_all
 
+/-- The function `find_leaving_helper` returns either the current element or something in `l`. -/
 lemma find_leaving_helper_mem {m : ℕ} (l : List (Fin m × ℝ)) :
   ∀ (cur : Fin m × ℝ),
   find_leaving_helper cur l = cur.fst
@@ -623,6 +657,9 @@ lemma find_leaving_helper_mem {m : ℕ} (l : List (Fin m × ℝ)) :
           apply Exists.intro v
           simp_all
 
+/-- If a tableau `t` has a leaving variable, that variable will have a positive ratio
+    between its right hand side and its coefficient in the entering variable's column.
+-/
 lemma piv_in_candidates {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
       (h_leaving : find_leaving_variable t enter = some leaving) :
   leaving ∈ (Finset.univ).filter (fun x : Fin m => (t.b x) / (t.A x enter) > 0) := by
@@ -658,6 +695,9 @@ lemma piv_in_candidates {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leaving :
         simp_all
       simp_all
 
+/-- The pivot element of a Tableau (the intersection of the entering and leaving variables
+    in the Tableau) must be positive.
+-/
 lemma piv_positive {m n : ℕ} (t : Tableau m n)
     (h_feasible : Feasible t) (enter : Fin n) (leaving : Fin m)
     (h_leaving : find_leaving_variable t enter = some leaving) :
@@ -675,6 +715,9 @@ lemma piv_positive {m n : ℕ} (t : Tableau m n)
     exact h4
   simp_all
 
+/-- The ratio between the RHS of the leaving variable's constraint and the pivot element
+    must be positive.
+-/
 lemma leaving_ratio_positive {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leaving : Fin m)
       (h_leaving : find_leaving_variable t enter = some leaving) :
   t.b leaving / t.A leaving enter > 0 := by
@@ -683,6 +726,7 @@ lemma leaving_ratio_positive {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leav
   simp_all
 ----------------------------------------------------------------------------------------
 
+/-- If `t` is well-formed and can pivot, the resulting Tableau after pivoting is well-formed. -/
 theorem pivot_preserves_well_formedness {m n : ℕ}
   (t : Tableau m n)
   (h_wf : WellFormed t)
@@ -872,33 +916,6 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
                 · simp_all
                 · rename_i enter2 h_enter2 leaving2 h_leaving2
                   simp_all
-                  -- Idea : x ∉ N so t.c x = 0
-                  -- entering ∉ N so t.c entering = 0
-                  -- So both terms should be 0
-                  -- unfold WellFormed at h_wf
-                  -- obtain ⟨_,_,_,_,_,hN⟩ := h_wf
-                  -- have hN2 := (hN x).mp
-                  -- have hN3 : x ∉ Set.range t.N → t.c x = 0 := by
-                  --   contrapose hN2
-                  --   simp_all
-                  -- have h2 : x ∉ Set.range t.N := by
-                  --   simp_all
-                  --   intro y
-                  --   specialize h y
-                  --   unfold pivot at h
-                  --   simp at h
-                  --   unfold Function.update at h
-                  --   by_cases hy : y = args.k
-                  --   · -- so y is the leaving variable
-                  --     simp_all
-                  --     have h2 := args.h_enter_in_N
-
-                  --     by_contra h_contra
-                  --     sorry
-
-                  --   · simp_all
-                  -- simp_all
-                  -- intro y
                   rewrite [← h_args] at *
                   simp_all
                   apply sub_eq_zero.mpr
@@ -917,12 +934,22 @@ theorem pivot_preserves_well_formedness {m n : ℕ}
                       enter_var_pos_coefficient args.t enter2 h_enter_copy
                     split at h_leaving2
                     · simp_all
-                    · simp_all
-                      rename_i l2 head2 tail2 h_leaving
+                    · /- Proof sketch:
+                      From h we know that x ∉ N, and thus by h_wf, it follows that x ∈ B
+                      So t.c x = 0, because this is true for all basic variables
+                      Additionally, the columns of A that correspond to variables in the basis
+                      form the identity matrix, with the 1 in the row that corresponds to the same
+                      basic variable. Thus if x is not the leaving variable (t.B leaving ≠ x), then
+                      args.t.A leaving x = 0. Since both sides are equal to zero,
+                      the inequality holds.
+                      -/
                       sorry
-            · sorry
+            · intro h
+              unfold pivot
+              simp_all
+              sorry
 
-
+/-- Pivoting a tableau `t` strictly increases its objective value `v`. -/
 theorem pivot_improves_objective {m n : ℕ} (t : Tableau m n) (h_feasible : Feasible t)
     (h_wf : WellFormed t) (args : pivot_arguments m n)
     (h_args : get_pivot_arguments t h_wf = some args) :
@@ -971,40 +998,416 @@ theorem pivot_improves_objective {m n : ℕ} (t : Tableau m n) (h_feasible : Fea
 
 
 ---------- Recursion and Termination ------------
+
+/-- All bases a Tableau could visit based on its dimensions. -/
 def all_bases (m n : ℕ) : Finset (Fin m → Fin n) := Finset.univ
 
+/-- The number of bases `t` has not yet visited.
+-/
 def decreasing_measure {m n : ℕ} (t : Tableau m n) : Nat :=
   (all_bases m n).card - t.Visited_Bases.card
 
+/-- A call to `pivot` strictly decreases the number of bases not yet visited by the Tableau. -/
+lemma pivot_decreases_measure {m n : ℕ}
+  (t : Tableau m n)
+  (h_wf : WellFormed t)
+  (args : pivot_arguments m n)
+  (h_args : get_pivot_arguments t h_wf = some args)
+    : decreasing_measure (pivot args)
+    < decreasing_measure t := by
+  let B' := Function.update args.t.B args.leaving args.entering
+
+  have hB' : B' ∈ all_bases m n := by
+    unfold all_bases
+    simp_all
+  have h_newBase : Function.update args.t.B args.leaving args.entering ∉ t.Visited_Bases := by
+    rewrite [get_piv_arguments_unchanged_t t h_wf args h_args]
+    apply args.new_basis
+
+  -- Because B' ∈ all_bases but B' ∉ t.Visited_Bases, and t.Visited_Bases ⊆ all_bases,
+  -- we get strict inequality:
+  have hcard_lt : t.Visited_Bases.card < (all_bases m n).card := by
+    unfold all_bases
+    apply Finset.card_lt_card
+    apply Finset.ssubset_univ_iff.mpr
+    by_contra h_contra
+    apply Finset.eq_univ_iff_forall.mp at h_contra
+    specialize h_contra (Function.update args.t.B args.leaving args.entering)
+    simp_all
+
+  -- from `C < A` we get `C + 1 ≤ A`
+  have hsucc_le : t.Visited_Bases.card + 1 ≤ (all_bases m n).card := Nat.succ_le_of_lt hcard_lt
+
+  unfold decreasing_measure
+  unfold pivot
+  simp_all
+  apply Nat.sub_lt_sub_left
+  · exact hcard_lt
+  · rewrite [get_piv_arguments_unchanged_t t h_wf args h_args] at *
+    simp_all
+
+/-- Given a well-formed tableau, performs the `pivot` operation
+    until no more `entering` or `leaving` variables can be found.
+-/
 noncomputable def pivot_until_done {m n : ℕ}
   (t : Tableau m n) (h_wf : WellFormed t)
-  -- (h_vb : Visited_Bases_Invariant t)
   : Tableau m n :=
   match h : get_pivot_arguments t h_wf with
   | none => t
   | some args =>
     have h_wf2 : WellFormed (pivot args) := pivot_preserves_well_formedness t h_wf args h
-    have h1 :  ∃ x, t.c x > 0 := by
-      apply Exists.intro args.entering
-      rewrite [get_piv_arguments_unchanged_t t h_wf args h]
-      exact args.h_c_pos
-    have h_enter_in_N := entering_in_N t h_wf h1
-    have N_k_is_enter := args.h_enter_in_N
-    -- have N_k_is_enter : t.N (Classical.choose h_enter_in_N) = args.entering := by
-    --   have h1 := Classical.choose_spec h_enter_in_N
-    --   simp_all
-    have t_c_positive : t.c args.entering > 0 := by
-      rewrite [get_piv_arguments_unchanged_t t h_wf args h]
-      exact args.h_c_pos
-    -- have new_base : Function.update t.B leaving enter ∉ t.Visited_Bases := by
-          -- unfold Visited_Bases_Invariant at h_vb
-          -- have h_vb2 := pivot2_preserves_vb_invariant t h_wf
-          -- have h_vb2 := contrapositive_vb t h_vb (Function.update t.B leaving enter)
-          -- obtain ⟨t2, h_vb2⟩ := h_vb2
     pivot_until_done (pivot args) h_wf2
-      -- (pivot_preserves_well_formedness t enter leaving
-      --   (Classical.choose h_enter_in_N) N_k_is_enter h_wf t_c_positive new_base)
--- termination_by decreasing_measure t
--- decreasing_by
---   unfold decreasing_measure
---   apply pivot_decreases_measure
+
+termination_by decreasing_measure t
+decreasing_by
+  apply pivot_decreases_measure t h_wf args h
+
+/-- Given a Linear Program with all equality constraints and in the correct form,
+    creates the Simplex Tableau, verifies its well-formedness, and then performs the
+    pivot operation until termination. It then returns the objective value of the
+    tableau after pivoting.
+-/
+noncomputable def Simplex_Algorithm {m n : ℕ} (lp : LP m n) (h_wflp : WellFormed_LP lp) : ℝ :=
+  let t := make_tableau lp h_wflp
+  let h_wf := wf_lp_to_tableau lp h_wflp
+  let final_t := pivot_until_done t h_wf
+  final_t.v
+
+----------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+------------ Unfinished Proofs and infrastructure for future work ----------------------
+----------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+
+/-- `t1` pivots to `t2` if either `t1` pivots directly to `t2` in one step
+    or if there exists some tableau `ti` such that `t1` pivots to `ti` and
+    `ti` pivots to `t2`.
+-/
+inductive PivotsTo (m n : ℕ) :
+    Tableau m n → Tableau m n → Prop
+| step :
+    ∀ {t t'} (args : pivot_arguments m n)
+      (h_wf : WellFormed t),
+      get_pivot_arguments t h_wf = some args →
+      t' = pivot args →
+      PivotsTo m n t t'
+| trans :
+    ∀ {t₁ t₂ t₃},
+      PivotsTo m n t₁ t₂ →
+      PivotsTo m n t₂ t₃ →
+      PivotsTo m n t₁ t₃
+
+/-- If `t1` can pivot to `t2` in some number of steps, then
+    `t1` must have been well-formed. This follows from the requirement
+    that `t1` is well-formed when we call `pivot`.
+-/
+lemma pivots_to_preserves_well_formedness {m n : ℕ} (t1 t2 : Tableau m n) :
+  PivotsTo m n t1 t2 → WellFormed t1 := by
+  intro h
+  induction h with
+  | step => simp_all
+  | trans h12 ih12 h23 ih23 =>
+      rename_i t3 t4 t5
+      simp_all
+
+/-- Helper lemma for `pivots_to_basis_ssubset`.
+    If `t1` can pivot to `t2` in some number of steps, then every base visited by
+    `t1` must have also been visited by `t2`.
+-/
+lemma pivots_to_basis_subset {m n : ℕ} (t1 t2 : Tableau m n) :
+  PivotsTo m n t1 t2 → t1.Visited_Bases ⊆ t2.Visited_Bases := by
+  intro h_piv
+  rewrite [Finset.subset_iff]
+  intros B hB
+  induction h_piv with
+  | step args h_wf h_get h_eq =>
+    rename_i t3 t4
+    rewrite [h_eq]
+    unfold pivot
+    simp_all
+    unfold get_pivot_arguments at h_get
+    split at h_get
+    · simp_all
+    · split at h_get
+      · simp_all
+      · rename_i enter2 h_enter2 leaving2 h_leaving2
+        simp at h_get
+        rewrite [← h_get]
+        simp_all
+  | trans h12 ih12 h23 ih23 =>
+    rename_i t3 t4 t5
+    simp_all
+
+/-- If `t1` can pivot to `t2` in some number of steps, then `t1` must have
+    visited strictly fewer bases than `t2`. This should help prove a termination
+    argument, since there are finitely many possible bases.
+-/
+lemma pivots_to_basis_ssubset {m n : ℕ} (t1 t2 : Tableau m n) :
+  PivotsTo m n t1 t2 → t1.Visited_Bases ⊂ t2.Visited_Bases := by
+
+  intro h_piv
+  have h_subseteq := pivots_to_basis_subset t1 t2 h_piv
+  apply Finset.ssubset_def.mpr
+  simp_all
+  apply Finset.not_subset.mpr
+  apply Exists.intro t2.B
+  induction h_piv with
+  | step args h_wf h_get h_eq =>
+    rename_i t3 t4
+    constructor
+    · unfold pivot at h_eq
+      rewrite [h_eq]
+      simp
+    · unfold pivot at h_eq
+      rewrite [h_eq]
+      simp
+      rewrite [get_piv_arguments_unchanged_t t3 h_wf args h_get]
+      exact args.new_basis
+  | trans h12 ih12 h23 ih23 =>
+    rename_i t3 t4 t5
+    have h1 := (pivots_to_basis_subset t3 t4 h12)
+    have h2 := (pivots_to_basis_subset t4 t5 ih12)
+    have h3 := (pivots_to_basis_subset t3 t5 (PivotsTo.trans h12 ih12))
+    simp_all
+    by_contra h_contra
+    have h_contra2 : t5.B ∈ t4.Visited_Bases := by
+      apply Finset.subset_iff.mp at h1
+      simp_all
+    simp_all
+
+/-- A basic solution for a Tableau sets all variables not in the basis to zero
+    and all variables in the basis to the RHS of their corresponding constraint.
+-/
+def basicSolution {m n : ℕ} (t : Tableau m n) : Fin n → ℝ :=
+  fun j =>
+    match (List.finRange m).find? (fun i => t.B i = j) with
+    | some i => t.b i
+    | none   => 0
+
+/-- If `t` is feasible and can pivot, then the resulting tableau after pivoting
+    will also be feasible. Note that this theorem is mostly finished, but has
+    a few remaining calls to `sorry` and thus is not fully verified.
+-/
+theorem pivot_preserves_feasibility {m n : ℕ}
+  (t : Tableau m n) (h_wf : WellFormed t)
+  (h_feasible : Feasible t) (args : pivot_arguments m n)
+  (h : get_pivot_arguments t h_wf = some args) :
+    Feasible (pivot args) := by
+
+  have h_enter_in_N := args.h_enter_in_N
+  have h_leaving : find_leaving_variable t args.entering = some args.leaving := by
+    unfold get_pivot_arguments at h
+    split at h
+    · simp_all
+    · split at h
+      · simp_all
+      · rename_i enter2 h_enter2 leaving2 h_leaving2
+        simp at h
+        rewrite [← h]
+        simp
+        exact h_leaving2
+  have h_pivot_pos := piv_positive t h_feasible args.entering args.leaving h_leaving
+  have h_ratio : ∀ i : Fin m,
+    t.A i args.entering > 0 →
+    t.b args.leaving / t.A args.leaving args.entering ≤ t.b i / t.A i args.entering := sorry
+  have h_c_pos : t.c args.entering > 0 := by
+    rewrite [get_piv_arguments_unchanged_t t h_wf args h]
+    apply args.h_c_pos
+  have h_newBase : Function.update t.B args.leaving args.entering ∉ t.Visited_Bases := sorry
+
+  rewrite [← get_piv_arguments_unchanged_t t h_wf args h] at *
+
+  intro i
+  let t' := pivot args
+  by_cases hi : i = args.leaving
+  · -- leaving row
+    rw [hi]
+    dsimp [pivot, basicSolution]
+    have hr_nonneg : 0 ≤ t.b args.leaving := h_feasible args.leaving
+    simp
+    rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
+    exact div_nonneg hr_nonneg (le_of_lt h_pivot_pos)
+  · -- other rows
+    dsimp [pivot, basicSolution]
+    let A_i_enter := t.A i args.entering
+    let b_i := t.b i
+    let b_r := t.b args.leaving
+    let piv := t.A args.leaving args.entering
+    -- new value: b[i]' = b[i] - (A[i][enter]/piv)*b[r]
+    by_cases hA_pos : t.A i args.entering > 0
+    -- If A[i,enter] > 0 use ratio test: (b_r / piv) ≤ (b_i / A_i_enter)
+    · have ratio := h_ratio i hA_pos
+      -- multiply the ratio inequality by A_i_enter > 0:
+      -- (A_i_enter / piv) * b_r = A_i_enter * (b_r / piv) ≤ A_i_enter * (b_i / A_i_enter) = b_i
+      have h3 : (t.A i args.entering / t.A args.leaving args.entering)
+                * t.b args.leaving ≤ t.b i := by
+        -- rewrite (A_i_enter / piv) * b_r as A_i_enter * (b_r / piv)
+        -- now multiply both sides of ratio by A_i_enter > 0
+        have h_temp := mul_le_mul_of_nonneg_left ratio (le_of_lt hA_pos)
+        have le_mul : ∀ (a b c : ℝ), 0 < c → a ≤ b → c*a ≤ c*b := by
+          intros a b c h1 h2
+          simp_all
+        have some_linear_arith : ∀ (a b c d : ℝ),
+          0 < a  → a * (b/c) ≤ a * (d/a) → (a/c) * b ≤ d := by
+          intros a b c d h1 h2
+          have h4 := mul_comm_div a c b
+          rewrite [← h4] at h2
+          have h5 := mul_comm_div a a d
+          rewrite [← h5] at h2
+          have h6 : a ≠ 0 := by
+            by_contra
+            simp_all
+          have h7 := div_self h6
+          rewrite [h7] at h2
+          simp at h2
+          exact h2
+        have h_temp3 :=
+          (le_mul (t.b args.leaving / t.A args.leaving args.entering)
+                  (t.b i / t.A i args.entering)
+                  (t.A i args.entering)) hA_pos ratio
+        have h_arith := some_linear_arith
+          (t.A i args.entering)
+          (t.b args.leaving)
+          (t.A args.leaving args.entering)
+          (t.b i) hA_pos h_temp3
+        simp_all
+      simp [hi]
+      rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
+      simp [h3]
+
+    · -- If A[i,enter] ≤ 0 then (A_i_enter / piv) ≤ 0, so subtracting it
+      -- b_i - (A_i_enter/piv)*b_r = b_i + (-(A_i_enter/piv))*b_r which is ≥ 0
+      have hdiv_nonpos : A_i_enter / t.A args.leaving args.entering  ≤ 0 := by
+        have h3 : A_i_enter ≤ 0 →
+          A_i_enter / t.A args.leaving args.entering ≤ 0 / t.A args.leaving args.entering
+          := (div_le_div_iff_of_pos_right h_pivot_pos).mpr
+        have h4 := le_of_not_gt hA_pos
+        apply h3 at h4
+        simp_all
+
+      have term_nonneg : 0 ≤ -(t.A i args.entering / t.A args.leaving args.entering)
+                             * t.b args.leaving := by
+        -- -(A_i_enter / piv) ≥ 0 and b_r ≥ 0, so product ≥ 0
+        have : 0 ≤ -(A_i_enter / t.A args.leaving args.entering) := by
+          let h1 := neg_le_neg hdiv_nonpos
+          rewrite [neg_zero] at h1
+          exact h1
+
+        exact mul_nonneg this (h_feasible args.leaving)
+      simp_all
+      rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
+      exact le_trans term_nonneg (h_feasible i)
+
+/-- If `t1` is feasible and can pivot to `t2` in some number of steps,
+    then `t2` must also be feasible. This follows from the proof
+    that `pivot_preserves_feasibility`.
+-/
+lemma pivots_to_preserves_feasibility {m n : ℕ} (t1 t2 : Tableau m n) :
+    Feasible t1 → PivotsTo m n t1 t2 → Feasible t2 := by
+  intro h1 h2
+  induction h2 with
+  | step args h_wf h_args h_eq =>
+    rename_i t3 t4
+    have h3 := pivot_preserves_feasibility t3 h_wf h1 args h_args
+    simp_all
+  | trans h12 ih12 h23 ih23 =>
+      rename_i t3 t4 t5
+      simp_all
+
+/-- If `t1` can pivot to `t2` in some number of steps, then the objective value for
+    `t2` must be larger than the objective value from `t1`. This follows from the proof
+    that `pivot_improves_objective`. This could be helpful in proving a termination
+    argument because if `t1` pivots to `t2`, we cannot have that `t2` pivots to `t1`, since
+    this would cause a contradiction by this theorem.
+-/
+theorem pivots_to_increases_v {m n : ℕ}
+    (t1 t2 : Tableau m n) (h1_feasible : Feasible t1) (h2_feasible : Feasible t2) :
+    PivotsTo m n t1 t2 → (t2.v > t1.v) := by
+  intro h
+  induction h with
+  | step args h_wf h_get h_eq =>
+    rename_i t3 t4
+    have h_args_isSome : (get_pivot_arguments t3 h_wf).isSome = true := by simp_all
+    have h_pivot_increases := pivot_improves_objective t3 h1_feasible h_wf args h_get
+    simp_all
+    have h_args_t := get_piv_arguments_unchanged_t t3 h_wf args h_get
+    simp_all
+  | trans h12 ih12 h23 ih23 =>
+    rename_i t3 t4 t5
+    simp_all
+    have h_t3_wf := pivots_to_preserves_well_formedness t3 t4 h12
+    have h_t4_feasible := pivots_to_preserves_feasibility t3 t4 h1_feasible h12
+    simp_all
+    exact lt_trans (h23) (ih23)
+
+/-- Adds a slack variable to the jth constraint by putting a coefficient
+    of 1 at the n+jth index and all other variables past n are 0
+-/
+def add_slack_to_constraint {m n : ℕ} (A_j : Fin n → ℝ) (j : Fin m) : Fin (n+m) → ℝ :=
+  fun i => if h : i.val < n then A_j (Fin.castLT i h) else
+    if i = (n + j) then 1 else 0
+
+/-- Given an LP in standard form, adds a slack variable to each constraint
+    to turn inequalities (≤) into equalities (=).
+-/
+def add_slack_variables {m n : ℕ} (lp : standard_LP m n) : LP m (n + m) :=
+  let c := fun i : Fin (n + m) => if h : i.val < n then lp.c (Fin.castLT i h) else 0
+  let b := lp.b
+  let A := fun j : Fin m => add_slack_to_constraint (lp.A j) j
+  ⟨A,b,c⟩
+
+/-- A solution to a linear program with all equality constraints is feasible if
+    the LHS of each constraint = the RHS of each constraint, and all variables are nonnegative.
+-/
+def solution_is_feasible_LP {m n : ℕ} (lp : LP m n) (x : Fin n → ℝ) : Prop :=
+  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) = lp.b j) ∧
+  ∀ (i : Fin n), x i ≥ 0
+
+/-- Given a linear program with all equality constraints,
+    calculates the value of the objective function at the given solution.
+-/
+def get_objective_value_LP {m n : ℕ} (lp : LP m n) (solution : Fin n → ℝ) : ℝ :=
+  ∑ i, ((lp.c i) * (solution i))
+
+/-- Given a linear program in standard form, calculates the value of the objective function
+    at the given solution.
+-/
+def get_objective_value_standard_LP {m n : ℕ} (lp : standard_LP m n) (solution : Fin n → ℝ) : ℝ :=
+  ∑ i, ((lp.c i) * (solution i))
+
+/-- Given a generic LP `lp`, returns an equivalent LP in standard form.
+
+  This definition is not quite correct, because it does not add an extra
+  inequality in the reverse direction for case `.eq`. We would like to encode
+      ∑ᵢ Aⱼᵢxᵢ = bⱼ ≡ LHS ≤ bⱼ ∧ -LHS ≤ -bⱼ
+  but this requires us to add more dimensions to A to encode the extra constraints,
+  and it is unclear how to statically determine the dimensions for A depending on
+  how many constraints have `op = .eq`.
+-/
+def make_standard {m n : ℕ} (lp : generic_LP m n) : standard_LP m n :=
+  let c := match lp.obj with
+    | .min => (fun i => -1 * lp.c i)
+    | .max => lp.c
+  let b := fun i => (lp.constraints i).b
+  let A := fun i : Fin m => fun j => match (lp.constraints i).ops with
+    | .leq => (lp.constraints i).A j
+    | .eq => (lp.constraints i).A j
+    | .geq =>  -1 * ((lp.constraints i).A j)
+  ⟨A,b,c⟩
+
+/-- A solution to a linear program in standard form is feasible if the LHS of each constraint
+    is ≤ the RHS of each constraint, and all variables are nonnegative.
+-/
+def solution_is_feasible_standard_LP {m n : ℕ} (lp : standard_LP m n) (x : Fin n → ℝ) : Prop :=
+  (∀ (j : Fin m), ∑ i, (lp.A j i * x i) ≤ lp.b j) ∧
+  ∀ (i : Fin n), x i ≥ 0
+
+/-- `v` is a feasible objective value for an LP iff `v` is a feasible objective value
+    for the LP after adding slack variables.
+-/
+theorem adding_slack_equivalent_LP {m n : ℕ} : ∀ (lp : standard_LP m n) (v : ℝ),
+  (∃x, solution_is_feasible_standard_LP lp x
+    ∧ get_objective_value_standard_LP lp x = v)
+  ↔
+  (∃y, solution_is_feasible_LP (add_slack_variables lp) y
+    ∧ get_objective_value_LP (add_slack_variables lp) y = v) := sorry

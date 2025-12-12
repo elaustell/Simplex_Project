@@ -34,7 +34,8 @@ structure generic_LP (m n : ℕ) where
   (obj : objective)
   (x : Fin n → ℝ)
   (c : Fin n → ℝ)
-
+  (hn : n > 0)
+  (hm : m > 0)
 
 def my_sum_helper (index : ℕ) (f : ℕ → ℝ) : ℝ :=
   match index with
@@ -47,19 +48,19 @@ def my_sum {n : ℕ} (index : ℕ) (f : (Fin n) → ℝ) :=
     f i
   else 0)
 
-lemma split_sum (n m : ℕ) (index : ℕ) (f : Fin n → ℝ) :
-  my_sum index (fun (i : Fin (n+m)) => if h : i.val < n then f (i.castLT h) else 0)
-  = my_sum index f := by
-  induction m with
-  | zero =>
-    simp_all
-    sorry
-  | succ m =>
-    rename_i IH
-    rewrite [← IH]
-    have hf_equal :
-      (fun (i : Fin (n + (m + 1))) ↦ if h : ↑i < n then f (i.castLT h) else 0)
-      = (fun (i : Fin (n + m)) ↦ if h : ↑i < n then f (i.castLT h) else 0) := by
+-- lemma split_sum (n m : ℕ) (index : ℕ) (f : Fin n → ℝ) :
+--   my_sum index (fun (i : Fin (n+m)) => if h : i.val < n then f (i.castLT h) else 0)
+--   = my_sum index f := by
+--   induction m with
+--   | zero =>
+--     simp_all
+--     sorry
+--   | succ m =>
+--     rename_i IH
+--     rewrite [← IH]
+--     have hf_equal :
+--       (fun (i : Fin (n + (m + 1))) ↦ if h : ↑i < n then f (i.castLT h) else 0)
+--       = (fun (i : Fin (n + m)) ↦ if h : ↑i < n then f (i.castLT h) else 0) := by
 
 
 
@@ -470,6 +471,30 @@ noncomputable def make_N {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : F
 noncomputable def make_tableau {m n : ℕ} (lp : LP m n) (h_wf : WellFormed_LP lp) : Tableau m n :=
   ⟨lp.A, lp.b, lp.c, 0, make_B lp h_wf, make_N lp h_wf, {make_B lp h_wf}, lp⟩
 
+noncomputable def generic_lp_to_tableau {m n : ℕ} (lp : generic_LP m n) : Tableau m n :=
+  have lp2 := make_standard lp
+  have lp3 := add_slack_variables lp2
+  have h_wf : WellFormed_LP (add_slack_variables (make_standard lp)) := by
+    unfold WellFormed_LP
+    constructor
+    · simp_all
+      apply lp.hn
+    · constructor
+      · simp
+        unfold make_standard
+        simp
+        unfold add_slack_variables
+        simp
+        unfold zeros
+        simp
+        cases lp.obj
+        · simp
+          
+        apply Finset.card
+
+        simp
+
+
 lemma List.Nodup.get_inj {α : Type} {l : List α} (h : l.Nodup) (i j : Fin l.length) :
     l.get i = l.get j ↔ i = j := by
     apply List.Nodup.get_inj_iff
@@ -818,11 +843,12 @@ lemma leaving_ratio_positive {m n : ℕ} (t : Tableau m n) (enter : Fin n) (leav
   simp_all
 
 
+-- (h_ratio : ∀ i : Fin m, t.A i enter > 0 → t.b r / t.A r enter ≤ t.b i / t.A i enter)
 lemma leaving_min_pos_ratio {m n : ℕ} (t : Tableau m n)
     (enter : Fin n) (leaving : Fin m)
     (h_leaving : find_leaving_variable t enter = some leaving) :
 
-    ∀ i : Fin m, (t.b i) / (t.A i enter) ≤ t.b i / t.A i enter := by
+    ∀ i : Fin m, (t.b leaving) / (t.A i enter) ≤ t.b i / t.A i enter := by
       sorry
 
 -- lemma leaving_min_pos_ratio {m n : ℕ} (t : Tableau m n) (h_feasible : feasible t)
@@ -1298,7 +1324,7 @@ lemma pivot2_preserves_feasibility {m n : ℕ} (t : Tableau m n) (h_wf : WellFor
       t.b args.leaving / t.A args.leaving enter ≤ t.b i / t.A i enter := by
         intro h_pos
         rewrite [← enters_eq] at h_pos
-        have h9 := leaving_min_pos_ratio t args.entering args.leaving h_leaving_eq i h_pos
+        have h9 := leaving_min_pos_ratio t args.entering args.leaving h_leaving_eq i
         simp_all
     by_cases h_pos : t.b i / t.A i enter > 0
     · have h5 := h_ratio h_pos
@@ -1446,6 +1472,14 @@ lemma pivoted_from_basis_ssubset {m n : ℕ} (t1 t2 : Tableau m n) :
   simp_all
   apply Finset.not_subset.mpr
   apply Exists.intro t2.B
+  induction h_piv with
+  | step args h_wf h_get h_eq =>
+    rename_i t3 t4
+    constructor
+    · unfold pivot2 at h_eq
+      rewrite [h_eq]
+      simp
+    · have h2 :=
   sorry
 
 lemma N_different_after_pivot {m n : ℕ}
@@ -1549,6 +1583,100 @@ by
 
         exact mul_nonneg this (h_feasible r)
       simp_all
+      exact le_trans term_nonneg (h_feasible i)
+
+
+theorem pivot2_preserves_feasibility2 {m n : ℕ}
+  (t : Tableau m n) (h_wf : WellFormed t)
+  (h_feasible : feasible t) (args : pivot_arguments m n)
+  (h : get_pivot_arguments t h_wf = some args) :
+    feasible (pivot2 args) := by
+
+  have h_enter_in_N := args.h_enter_in_N
+  have h_leaving : find_leaving_variable t args.entering = some args.leaving := by
+    unfold get_pivot_arguments at h
+    split at h
+    · simp_all
+    · split at h
+      · simp_all
+      · rename_i enter2 h_enter2 leaving2 h_leaving2
+        simp at h
+        rewrite [← h]
+        simp
+        exact h_leaving2
+  have h_pivot_pos := piv_positive t h_feasible args.entering args.leaving h_leaving
+  have h_ratio : ∀ i : Fin m,
+    t.A i args.entering > 0 →
+    t.b args.leaving / t.A args.leaving args.entering ≤ t.b i / t.A i args.entering := sorry
+  have h_c_pos : t.c args.entering > 0 := by
+    rewrite [get_piv_arguments_unchanged_t t h_wf args h]
+    apply args.h_c_pos
+  have h_newBase : Function.update t.B args.leaving args.entering ∉ t.Visited_Bases := sorry
+
+  rewrite [← get_piv_arguments_unchanged_t t h_wf args h] at *
+
+  intro i
+  let t' := pivot2 args
+  by_cases hi : i = args.leaving
+  · -- leaving row
+    rw [hi]
+    dsimp [pivot2, basicSolution]
+    have hr_nonneg : 0 ≤ t.b args.leaving := h_feasible args.leaving
+    simp
+    rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
+    exact div_nonneg hr_nonneg (le_of_lt h_pivot_pos)
+  · -- other rows
+    dsimp [pivot2, basicSolution]
+    let A_i_enter := t.A i args.entering
+    let b_i := t.b i
+    let b_r := t.b args.leaving
+    let piv := t.A args.leaving args.entering
+    -- new value: b[i]' = b[i] - (A[i][enter]/piv)*b[r]
+    by_cases hA_pos : t.A i args.entering > 0
+    -- If A[i,enter] > 0 use ratio test: (b_r / piv) ≤ (b_i / A_i_enter)
+    · have ratio := h_ratio i hA_pos
+      -- multiply the ratio inequality by A_i_enter > 0:
+      -- (A_i_enter / piv) * b_r = A_i_enter * (b_r / piv) ≤ A_i_enter * (b_i / A_i_enter) = b_i
+      have h3 : (t.A i args.entering / t.A args.leaving args.entering)
+                * t.b args.leaving ≤ t.b i := by
+        -- rewrite (A_i_enter / piv) * b_r as A_i_enter * (b_r / piv)
+        -- now multiply both sides of ratio by A_i_enter > 0
+        have h_temp := mul_le_mul_of_nonneg_left ratio (le_of_lt hA_pos)
+        have h_temp3 :=
+          (le_mul (t.b args.leaving / t.A args.leaving args.entering)
+                  (t.b i / t.A i args.entering)
+                  (t.A i args.entering)) hA_pos ratio
+        have h_arith := some_linear_arith
+          (t.A i args.entering)
+          (t.b args.leaving)
+          (t.A args.leaving args.entering)
+          (t.b i) hA_pos h_temp3
+        simp_all
+      simp [hi]
+      rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
+      simp [h3]
+
+    · -- If A[i,enter] ≤ 0 then (A_i_enter / piv) ≤ 0, so subtracting it
+      -- b_i - (A_i_enter/piv)*b_r = b_i + (-(A_i_enter/piv))*b_r which is ≥ 0
+      have hdiv_nonpos : A_i_enter / t.A args.leaving args.entering  ≤ 0 := by
+        have h3 : A_i_enter ≤ 0 →
+          A_i_enter / t.A args.leaving args.entering ≤ 0 / t.A args.leaving args.entering
+          := (div_le_div_iff_of_pos_right h_pivot_pos).mpr
+        have h4 := le_of_not_gt hA_pos
+        apply h3 at h4
+        simp_all
+
+      have term_nonneg : 0 ≤ -(t.A i args.entering / t.A args.leaving args.entering)
+                             * t.b args.leaving := by
+        -- -(A_i_enter / piv) ≥ 0 and b_r ≥ 0, so product ≥ 0
+        have : 0 ≤ -(A_i_enter / t.A args.leaving args.entering) := by
+          let h1 := neg_le_neg hdiv_nonpos
+          rewrite [neg_zero] at h1
+          exact h1
+
+        exact mul_nonneg this (h_feasible args.leaving)
+      simp_all
+      rewrite [get_piv_arguments_unchanged_t t h_wf args h] at *
       exact le_trans term_nonneg (h_feasible i)
 
 
