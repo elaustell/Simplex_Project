@@ -539,60 +539,6 @@ lemma x_not_in_B_implies_x_in_N {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed
   simp [h_cont] at contra
   simp_all
 
-/-- If `get_pivot_args` returns `some`, then `t` must have an entering variable. -/
-lemma pivot_args_some_implies_entering_some {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) :
-  (get_pivot_arguments t h_wf).isSome = true → (find_entering_variable t).isSome = true := by
-  simp [get_pivot_arguments]
-  split
-  · simp
-  · split
-    · simp
-    · simp_all
-
-/-- If `get_pivot_args` returns `some`, then `t` must have a leaving variable. -/
-lemma pivot_args_some_implies_leaving_some {m n : ℕ}
-  (t : Tableau m n) (h_wf : WellFormed t) (enter : Fin n)
-  (h : (get_pivot_arguments t h_wf).isSome = true)
-  (h2 : find_entering_variable t = some enter) :
-  (find_leaving_variable t enter).isSome = true := by
-
-  unfold get_pivot_arguments at h
-  apply Option.isSome_iff_exists.mpr
-  apply Option.isSome_iff_exists.mp at h
-
-  obtain ⟨args, h_args⟩ := h
-  split at h_args
-  · simp_all
-  · split at h_args
-    · simp_all
-    · rename_i enter2 h4 leaving2 h5
-      simp_all
-
-/-- The tableau in the structure returned by `get_pivot_arguments` with input `t`
-    is itself (`t`). This helps with rewrites where we have a hypothesis that refers to
-    `args.t` but a goal that refers to `t`, or vice versa.
--/
-lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
-  (args : pivot_arguments m n) (h : get_pivot_arguments t h_wf = some args) :
-    t = args.t := by
-
-  have h_piv_args_isSome : (get_pivot_arguments t h_wf).isSome := by
-    simp_all
-  unfold get_pivot_arguments at h
-  have h_entering_isSome := pivot_args_some_implies_entering_some t h_wf h_piv_args_isSome
-  apply Option.isSome_iff_exists.mp at h_entering_isSome
-  obtain ⟨enter, h_enter⟩ := h_entering_isSome
-  have h_leaving := pivot_args_some_implies_leaving_some t h_wf enter h_piv_args_isSome h_enter
-  apply Option.isSome_iff_exists.mp at h_leaving
-  obtain ⟨leaving, h_leaving⟩ := h_leaving
-  split at h
-  · simp_all
-  · split at h
-    · simp_all
-    · simp_all
-      rewrite [← h]
-      simp_all
-
 /-- The function `find_leaving_helper` returns either the current element or something in `l`. -/
 lemma find_leaving_helper_mem {m : ℕ} (l : List (Fin m × ℝ)) :
   ∀ (cur : Fin m × ℝ),
@@ -656,6 +602,60 @@ lemma find_leaving_helper_mem {m : ℕ} (l : List (Fin m × ℝ)) :
           right
           apply Exists.intro v
           simp_all
+
+/-- If `get_pivot_args` returns `some`, then `t` must have an entering variable. -/
+lemma pivot_args_some_implies_entering_some {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t) :
+  (get_pivot_arguments t h_wf).isSome = true → (find_entering_variable t).isSome = true := by
+  simp [get_pivot_arguments]
+  split
+  · simp
+  · split
+    · simp
+    · simp_all
+
+/-- If `get_pivot_args` returns `some`, then `t` must have a leaving variable. -/
+lemma pivot_args_some_implies_leaving_some {m n : ℕ}
+  (t : Tableau m n) (h_wf : WellFormed t) (enter : Fin n)
+  (h : (get_pivot_arguments t h_wf).isSome = true)
+  (h2 : find_entering_variable t = some enter) :
+  (find_leaving_variable t enter).isSome = true := by
+
+  unfold get_pivot_arguments at h
+  apply Option.isSome_iff_exists.mpr
+  apply Option.isSome_iff_exists.mp at h
+
+  obtain ⟨args, h_args⟩ := h
+  split at h_args
+  · simp_all
+  · split at h_args
+    · simp_all
+    · rename_i enter2 h4 leaving2 h5
+      simp_all
+
+/-- The tableau in the structure returned by `get_pivot_arguments` with input `t`
+    is itself (`t`). This helps with rewrites where we have a hypothesis that refers to
+    `args.t` but a goal that refers to `t`, or vice versa.
+-/
+lemma get_piv_arguments_unchanged_t {m n : ℕ} (t : Tableau m n) (h_wf : WellFormed t)
+  (args : pivot_arguments m n) (h : get_pivot_arguments t h_wf = some args) :
+    t = args.t := by
+
+  have h_piv_args_isSome : (get_pivot_arguments t h_wf).isSome := by
+    simp_all
+  unfold get_pivot_arguments at h
+  have h_entering_isSome := pivot_args_some_implies_entering_some t h_wf h_piv_args_isSome
+  apply Option.isSome_iff_exists.mp at h_entering_isSome
+  obtain ⟨enter, h_enter⟩ := h_entering_isSome
+  have h_leaving := pivot_args_some_implies_leaving_some t h_wf enter h_piv_args_isSome h_enter
+  apply Option.isSome_iff_exists.mp at h_leaving
+  obtain ⟨leaving, h_leaving⟩ := h_leaving
+  split at h
+  · simp_all
+  · split at h
+    · simp_all
+    · simp_all
+      rewrite [← h]
+      simp_all
 
 /-- If a tableau `t` has a leaving variable, that variable will have a positive ratio
     between its right hand side and its coefficient in the entering variable's column.
