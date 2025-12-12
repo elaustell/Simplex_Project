@@ -1,7 +1,7 @@
+/- Working File, pretty hard to parse if you're not me. Lots of unfinished theorems/ideas. -/
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Matrix.Basic
 import Mathlib.Algebra.Module.Basic
--- import Mathlib.LinearAlgebra.Matrix
 import Mathlib.Data.Fin.Basic
 import Mathlib.Data.Set.Basic
 
@@ -489,7 +489,7 @@ noncomputable def generic_lp_to_tableau {m n : ℕ} (lp : generic_LP m n) : Tabl
         simp
         cases lp.obj
         · simp
-          
+
         apply Finset.card
 
         simp
