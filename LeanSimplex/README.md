@@ -1,13 +1,3 @@
 # LeanSimplex
 
-## GitHub configuration
-
-To set up your new GitHub repository, follow these steps:
-
-* Under your repository name, click **Settings**.
-* In the **Actions** section of the sidebar, click "General".
-* Check the box **Allow GitHub Actions to create and approve pull requests**.
-* Click the **Pages** section of the settings sidebar.
-* In the **Source** dropdown menu, select "GitHub Actions".
-
-After following the steps above, you can remove this section from the README file.
+A work in progress towards fully verifying the Simplex Algorithm, as a joint final project for COS516 and COS521. Fully annotated and organized code can be found in `LeanSimplex/LeanSimplex/Simplex.lean`. Creative naming :)
